@@ -37,6 +37,12 @@ struct SettingsView: View {
                     } label: {
                         Text("日志调试")
                     }
+                    
+                    NavigationLink {
+                        CalendarDebugView()
+                    } label: {
+                        Text("节假日数据")
+                    }
                 }
                 
                 Section("关于") {
