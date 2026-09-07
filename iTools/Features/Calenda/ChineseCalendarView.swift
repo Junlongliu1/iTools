@@ -6,6 +6,9 @@ struct ChineseCalendarView: View {
     @StateObject private var holidayProvider = HolidayManager.shared
     
     private let calendar = Calendar.current
+    private let calendarHeight: CGFloat = 304
+
+    @State private var selectedTabIndex: Int = 6
     
     var body: some View {
         NavigationStack {
@@ -13,19 +16,21 @@ struct ChineseCalendarView: View {
                 CalendarHeader(date: $currentMonth)
                 
                 Divider()
-                
-                // ✅ 修复：不再使用 GeometryReader，让 TabView 内的月视图自适应高度
-                TabView(selection: $currentMonth) {
-                    ForEach(monthRange, id: \.self) { monthDate in
+
+                TabView(selection: $selectedTabIndex) {
+                    ForEach(monthRange.indices, id: \.self) { index in
                         MonthCalendarView(
-                            date: monthDate,
+                            date: monthRange[index],
                             provider: holidayProvider
                         )
-                        .tag(monthDate)
+                        .tag(index)
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
-                .animation(.easeInOut(duration: 0.25), value: currentMonth)
+                .frame(height: calendarHeight)
+                .animation(.easeInOut(duration: 0.25), value: selectedTabIndex)
+                
+                Spacer(minLength: 0)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -33,72 +38,57 @@ struct ChineseCalendarView: View {
                     Button("今天") {
                         withAnimation(.spring(response: 0.3)) {
                             currentMonth = Date()
+                            selectedTabIndex = 6
                         }
                     }
                     .fontWeight(.medium)
                 }
             }
+
+            .onChange(of: selectedTabIndex) { _, newIndex in
+                let offset = newIndex - 6
+                if let newDate = calendar.date(byAdding: .month, value: offset, to: anchorDate) {
+                    currentMonth = newDate
+                }
+            }
+            .onChange(of: currentMonth) { _, newDate in
+                let components = calendar.dateComponents([.year, .month], from: anchorDate)
+                let newComponents = calendar.dateComponents([.year, .month], from: newDate)
+                
+                guard let anchorMonths = calendar.dateComponents([.month], from: components, to: newComponents).month else { return }
+                let newIndex = 6 + anchorMonths
+                
+                if newIndex != selectedTabIndex && (0...12).contains(newIndex) {
+                    selectedTabIndex = newIndex
+                }
+            }
         }
     }
     
+    /// 锚点日期：始终为当前真实月份，用于计算偏移
+    private var anchorDate: Date {
+        calendar.date(from: calendar.dateComponents([.year, .month], from: Date())) ?? Date()
+    }
+    
+    /// 生成以当前月为中心的 13 个月范围
     private var monthRange: [Date] {
         (-6...6).compactMap { offset in
-            calendar.date(byAdding: .month, value: offset, to: currentMonth)
+            calendar.date(byAdding: .month, value: offset, to: anchorDate)
         }
     }
 }
 
-// MARK: - 头部导航组件
-struct CalendarHeader: View {
-    @Binding var date: Date
-    
-    private static let yearFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_CN")
-        f.dateFormat = "yyyy年"
-        return f
-    }()
-    
-    private static let monthFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_CN")
-        f.dateFormat = "M月"
-        return f
-    }()
-    
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(Self.yearFormatter.string(from: date))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                
-                Text(Self.monthFormatter.string(from: date))
-                    .font(.title2.bold())
-                    .contentTransition(.numericText())
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-    }
-}
-
-// MARK: - 月视图（周一为起始日）
+// MARK: - 月视图 (移除所有外部 frame 约束，尺寸由 containerRelativeFrame 控制)
 struct MonthCalendarView: View {
     let date: Date
     let provider: HolidayDataProvider?
     
     private let calendar = Calendar.current
     private let weekdays = ["一", "二", "三", "四", "五", "六", "日"]
-    
-    // ✅ 修复：统一定义所有行间距为同一个值
     private let rowSpacing: CGFloat = 4
     
     var body: some View {
-        // ✅ 修复：顶部对齐 + Spacer 推底，不再撑满父容器高度
         VStack(spacing: 0) {
-            // 星期标题行
             LazyVGrid(columns: weekColumns, spacing: 0) {
                 ForEach(weekdays, id: \.self) { day in
                     Text(day)
@@ -107,10 +97,8 @@ struct MonthCalendarView: View {
                         .frame(height: 28)
                 }
             }
-            // ✅ 修复：标题与第一行日期的间距 = rowSpacing
             .padding(.bottom, rowSpacing)
             
-            // 日期网格
             LazyVGrid(columns: weekColumns, spacing: rowSpacing) {
                 ForEach(daysInMonth, id: \.self) { d in
                     if let d {
@@ -120,20 +108,15 @@ struct MonthCalendarView: View {
                     }
                 }
             }
-            
-            // ✅ 修复：将多余空间推到底部，保证上方网格紧凑且间距一致
-            Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
     
     private var weekColumns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
     }
     
-    /// 以周一为起始日计算当月所有格子（固定42格 = 6行×7列）
     private var daysInMonth: [Date?] {
         guard let range = calendar.range(of: .day, in: .month, for: date),
               let firstDay = calendar.date(from: calendar.dateComponents([.year, .month], from: date)) else {
@@ -152,7 +135,7 @@ struct MonthCalendarView: View {
     }
 }
 
-// MARK: - 日期单元格
+// MARK: - 日期单元格 (保持不变)
 struct DayCell: View {
     let date: Date
     let currentDate: Date
