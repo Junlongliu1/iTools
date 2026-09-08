@@ -7,13 +7,13 @@ struct ChineseCalendarView: View {
     @State private var currentMonth: Date = Date()
     @State private var selectedTabIndex: Int = 50
     @State private var selectedDate: Date?
+    @State private var detailInfo: ChineseCalendarInfo?
     
     private let calendar = Calendar.chinese
-    // /36(星期头) + 6×52(日期) + 5×4(间距) + 8(topPadding) + 安全余量
     private let calendarHeight: CGFloat = 370
     
     private let anchorDate: Date = {
-        return Calendar.chinese.date(from: DateComponents(year: 2024, month: 1)) ?? Date()
+        Calendar.chinese.date(from: DateComponents(year: 2024, month: 1)) ?? Date()
     }()
     
     private let visibleRange: Range<Int> = 0..<101
@@ -31,13 +31,13 @@ struct ChineseCalendarView: View {
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottomTrailing) {
-                // 主体内容
                 VStack(spacing: 0) {
                     CalendarHeader(date: currentMonth)
                         .foregroundStyle(.red)
                     
                     Divider()
                     
+                    // 月历网格
                     TabView(selection: $selectedTabIndex) {
                         ForEach(visibleRange, id: \.self) { index in
                             MonthCalendarView(
@@ -52,10 +52,21 @@ struct ChineseCalendarView: View {
                     .frame(height: calendarHeight)
                     .animation(.easeInOut(duration: 0.25), value: selectedTabIndex)
                     
+                    Group {
+                        if let info = detailInfo {
+                            DateDetailView(info: info)
+                                .padding(.top, 12)
+                        } else {
+                            // 占位防止高度跳动
+                            Color.clear.frame(height: 100)
+                        }
+                    }
+                    .animation(.easeInOut(duration: 0.2), value: detailInfo)
+                    
                     Spacer(minLength: 0)
                 }
                 
-                // 右下角悬浮“今”按钮
+                // “今”按钮
                 Button {
                     withAnimation(.spring(response: 0.3)) {
                         currentMonth = Date()
@@ -74,6 +85,13 @@ struct ChineseCalendarView: View {
                 .padding(.bottom, 24)
             }
             .navigationBarTitleDisplayMode(.inline)
+            .task(id: selectedDate) {
+                guard let date = selectedDate else {
+                    detailInfo = nil
+                    return
+                }
+                detailInfo = ChineseCalendarService.shared.getInfo(for: date)
+            }
             .onChange(of: selectedTabIndex) { _, newIndex in
                 let newDate = dateForIndex(newIndex)
                 if !calendar.isDate(newDate, equalTo: currentMonth, toGranularity: .month) {
@@ -82,7 +100,6 @@ struct ChineseCalendarView: View {
             }
             .onChange(of: currentMonth) { oldValue, newValue in
                 guard !calendar.isDate(oldValue, equalTo: newValue, toGranularity: .month) else { return }
-                
                 let targetIndex = indexForDate(newValue)
                 if targetIndex != selectedTabIndex {
                     withAnimation(.easeInOut(duration: 0.25)) {
@@ -95,6 +112,9 @@ struct ChineseCalendarView: View {
             let initialIndex = indexForDate(currentMonth)
             if initialIndex != selectedTabIndex {
                 selectedTabIndex = initialIndex
+            }
+            if selectedDate == nil {
+                selectedDate = Date()
             }
         }
     }

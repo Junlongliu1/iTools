@@ -88,13 +88,52 @@ final class ChineseCalendarService {
               let month = components.month,
               let day = components.day,
               let solarDay = try? SolarDay.fromYmd(year, month, day) else {
+            // 新增字段的默认值
             return ChineseCalendarInfo(
                 holiday: nil,
                 isOffDay: false,
                 workRestStatus: .none,
                 lunarDay: nil,
-                jieQi: nil
+                jieQi: nil,
+                weekdayText: "",
+                lunarFullText: "",
+                ganZhiYear: "",
+                ganZhiMonth: "",
+                ganZhiDay: "",
+                nineDayDetail: nil
             )
+        }
+        
+        // 星期
+        let weekday = Calendar.chinese.component(.weekday, from: date) // 1=周日, 2=周一...
+        let weekdayText: String
+        switch weekday {
+        case 1: weekdayText = "星期日"
+        case 2: weekdayText = "星期一"
+        case 3: weekdayText = "星期二"
+        case 4: weekdayText = "星期三"
+        case 5: weekdayText = "星期四"
+        case 6: weekdayText = "星期五"
+        case 7: weekdayText = "星期六"
+        default: weekdayText = ""
+        }
+
+        // 农历
+        let lunarDay = solarDay.getLunarDay()
+        let lunarFullText = "\(lunarDay.lunarMonth.getName())\(lunarDay.getName())"
+
+        // 干支
+        let sixtyCycleDay = solarDay.getSixtyCycleDay()
+        let ganZhiYear = "\(sixtyCycleDay.year)年"
+        let ganZhiMonth = "\(sixtyCycleDay.month)月"
+        let ganZhiDay = "\(sixtyCycleDay.day)日"
+
+        // 数九详情
+        var nineDayDetail: String? = nil
+        if let nineDay = solarDay.nineDay {
+            let name = nineDay.nine.getName()
+            let dayNumber = nineDay.dayIndex + 1
+            nineDayDetail = "\(name) 第\(dayNumber)天"
         }
         
         // 法定节假日及调休状态
@@ -111,12 +150,11 @@ final class ChineseCalendarService {
         }
         
         // 传统节日（优先级高于公历节日）
-        let lunarDay = solarDay.getLunarDay()
         if let traditional = getTraditionalFestival(lunarDay: lunarDay) {
             festivalName = traditional
         }
         
-        // 三伏天（优先级与节气类似，但我们将它作为节日显示）
+        // 三伏天
         if let dogDay = getDogDayFestival(solarDay: solarDay) {
             festivalName = dogDay
         }
@@ -153,7 +191,13 @@ final class ChineseCalendarService {
             isOffDay: isOffDay,
             workRestStatus: workRestStatus,
             lunarDay: lunarDayText,
-            jieQi: jieQiText
+            jieQi: jieQiText,
+            weekdayText: weekdayText,
+            lunarFullText: lunarFullText,
+            ganZhiYear: ganZhiYear,
+            ganZhiMonth: ganZhiMonth,
+            ganZhiDay: ganZhiDay,
+            nineDayDetail: nineDayDetail
         )
     }
     

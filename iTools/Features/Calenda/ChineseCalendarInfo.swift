@@ -17,6 +17,13 @@ struct ChineseCalendarInfo: Equatable {
     let workRestStatus: WorkRestStatus
     let lunarDay: String?         // 农历日（如“初三”）
     let jieQi: String?            // 节气名称（如“清明”）
+    
+    let weekdayText: String        // 星期几（如“星期一”）
+    let lunarFullText: String      // 完整农历（如“三月初五”）
+    let ganZhiYear: String         // 年干支（如“丙午年”）
+    let ganZhiMonth: String        // 月干支（如“辛卯月”）
+    let ganZhiDay: String          // 日干支（如“癸丑日”）
+    let nineDayDetail: String?     // 数九详情（如“一九 第8天”），不在数九期为 nil
 
     /// 副标题：按优先级返回节日、节气、农历
     var subtitle: String {
