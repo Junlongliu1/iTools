@@ -1,7 +1,5 @@
 // 主容器视图，管理月份状态、TabView 翻页和双向同步逻辑
 
-// MARK: - ChineseCalendarView.swift（彻底修复滑动与折叠）
-
 import SwiftUI
 import Tyme4Swift
 
@@ -11,6 +9,8 @@ struct ChineseCalendarView: View {
     @State private var selectedDate: Date?
     @State private var detailInfo: ChineseCalendarInfo?
     @State private var isWeekMode: Bool = false
+
+    @GestureState private var dragOffset: CGFloat = 0
     
     private let calendar = Calendar.chinese
     private let weekHeight: CGFloat = 88
@@ -18,6 +18,25 @@ struct ChineseCalendarView: View {
     private var monthHeight: CGFloat {
         let rows = numberOfRows(for: currentMonth)
         return CGFloat(44 + rows * 56)
+    }
+
+    private var calendarDisplayHeight: CGFloat {
+        let base = isWeekMode ? weekHeight : monthHeight
+
+        let target = isWeekMode ? monthHeight : weekHeight
+        let progress = min(max(-dragOffset / max(abs(target - base), 1), 0), 1)
+        
+        if isWeekMode {
+            return weekHeight + (monthHeight - weekHeight) * progress
+        } else {
+            return monthHeight - (monthHeight - weekHeight) * progress
+        }
+    }
+    
+    private var bottomContentOffset: CGFloat {
+        if isWeekMode { return 0 }
+        let maxShift = monthHeight - weekHeight
+        return max(dragOffset, -maxShift)
     }
     
     private let anchorDate: Date = {
@@ -63,7 +82,7 @@ struct ChineseCalendarView: View {
                         .foregroundStyle(.red)
                     
                     Divider()
-
+                    
                     VStack(spacing: 0) {
                         Group {
                             if isWeekMode {
@@ -92,63 +111,67 @@ struct ChineseCalendarView: View {
                                 .tabViewStyle(.page(indexDisplayMode: .never))
                             }
                         }
-                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
-                    // 动态高度
-                    .frame(height: isWeekMode ? weekHeight : monthHeight, alignment: .top)
+                    .frame(height: calendarDisplayHeight, alignment: .top)
                     .clipped()
-                    .animation(.easeInOut(duration: 0.3), value: isWeekMode)
-                    .animation(.easeInOut(duration: 0.25), value: currentMonth)
+                    // 仅在非拖拽状态下响应状态变化的动画
+                    .animation(dragOffset == 0 ? .easeInOut(duration: 0.3) : nil, value: isWeekMode)
+                    .animation(dragOffset == 0 ? .easeInOut(duration: 0.25) : nil, value: currentMonth)
                     
                     Divider()
                         .padding(.top, 4)
                     
-                    // 横条指示器：增加拖拽手势支持上拉
-                    HStack {
-                        Rectangle()
-                            .fill(Color(.systemGray4))
-                            .frame(width: 36, height: 4)
-                            .clipShape(Capsule())
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 10)
-                            .onEnded { value in
-                                // 上拉超过 30pt 且垂直主导 → 切换到周视图
-                                if value.translation.height < -30 &&
-                                   abs(value.translation.height) > abs(value.translation.width) {
-                                    withAnimation(.easeInOut(duration: 0.3)) {
-                                        isWeekMode = true
-                                    }
-                                }
-                                // 下拉超过 30pt 且垂直主导 → 切换到月视图
-                                else if value.translation.height > 30 &&
-                                        abs(value.translation.height) > abs(value.translation.width) {
-                                    withAnimation(.easeInOut(duration: 0.3)) {
-                                        isWeekMode = false
-                                    }
-                                }
+                    VStack(spacing: 0) {
+                        HStack {
+                            Rectangle()
+                                .fill(Color(.systemGray4))
+                                .frame(width: 36, height: 4)
+                                .clipShape(Capsule())
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .contentShape(Rectangle())
+                        
+                        Group {
+                            if let info = detailInfo {
+                                DateDetailView(info: info)
+                                    .padding(.top, 8)
+                            } else {
+                                Color.clear.frame(height: 100)
                             }
-                    )
-                    .onTapGesture {
-                        withAnimation(.easeInOut(duration: 0.3)) { isWeekMode.toggle() }
-                    }
-                    
-                    // 详情卡片
-                    Group {
-                        if let info = detailInfo {
-                            DateDetailView(info: info)
-                                .padding(.top, 8)
-                        } else {
-                            Color.clear.frame(height: 100)
                         }
                     }
-                    .animation(.easeInOut(duration: 0.2), value: detailInfo)
+                    .offset(y: bottomContentOffset)
+                    .animation(dragOffset == 0 ? .easeInOut(duration: 0.3) : nil, value: isWeekMode)
                     
                     Spacer(minLength: 0)
                 }
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 10)
+                        .updating($dragOffset) { value, state, _ in
+                            state = value.translation.height
+                        }
+                        .onEnded { value in
+                            let vertical = value.translation.height
+                            let horizontal = abs(value.translation.width)
+                            
+                            guard abs(vertical) > horizontal else { return }
+                            
+                            let threshold: CGFloat = 50
+                            
+                            if !isWeekMode && vertical < -threshold {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    isWeekMode = true
+                                }
+                            } else if isWeekMode && vertical > threshold {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    isWeekMode = false
+                                }
+                            }
+                        },
+                    including: isWeekMode ? .all : .all
+                )
                 
                 // "今"按钮
                 Button {
