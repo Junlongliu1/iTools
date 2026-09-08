@@ -9,9 +9,13 @@ struct MonthCalendarView: View {
     private let calendar = Calendar.chinese
     private let weekdays = ["一", "二", "三", "四", "五", "六", "日"]
     
+    // 按月预计算的数据缓存
+    @State private var monthInfo: [Date: ChineseCalendarInfo] = [:]
+    @State private var isLoading = false
+    
     var body: some View {
         VStack(spacing: 0) {
-            // 星期头：固定高度，周六日红色
+            // 星期头
             HStack(spacing: 0) {
                 ForEach(Array(weekdays.enumerated()), id: \.offset) { index, day in
                     Text(day)
@@ -23,7 +27,7 @@ struct MonthCalendarView: View {
             .frame(height: 32)
             .padding(.bottom, 4)
             
-            // 日期网格：无分割线，统一高亮
+            // 日期网格
             LazyVGrid(columns: weekColumns, spacing: 4) {
                 ForEach(daysInMonth, id: \.self) { d in
                     if let d {
@@ -39,6 +43,7 @@ struct MonthCalendarView: View {
                             date: d,
                             currentDate: date,
                             isHighlighted: isHighlighted,
+                            info: monthInfo[d],          // 直接传递缓存信息
                             onTap: { selectedDate = d }
                         )
                     } else {
@@ -49,11 +54,36 @@ struct MonthCalendarView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
+        .task(id: date) {
+            await loadMonthData()
+        }
+    }
+    
+    // MARK: - 异步加载该月所有日期信息
+    private func loadMonthData() async {
+        guard !isLoading else { return }
+        isLoading = true
+        
+        let components = calendar.dateComponents([.year, .month], from: date)
+        guard let year = components.year, let month = components.month else {
+            isLoading = false
+            return
+        }
+        
+        // 调用服务批量获取
+        let data = await ChineseCalendarService.shared.getMonthInfo(year: year, month: month)
+        
+        // 更新 UI
+        await MainActor.run {
+            self.monthInfo = data
+            self.isLoading = false
+        }
     }
     
     private var weekColumns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
     }
+    
     private var daysInMonth: [Date?] {
         guard let range = calendar.range(of: .day, in: .month, for: date),
               let firstDay = calendar.date(from: calendar.dateComponents([.year, .month], from: date)) else {

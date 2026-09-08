@@ -3,36 +3,94 @@
 import Foundation
 import Tyme4Swift
 
-// 类名保持不变
 final class ChineseCalendarService {
     static let shared = ChineseCalendarService()
     
-    // 函数名保持不变，内部逻辑精简为仅获取节假日
+    // 全局缓存字典，key 为归一化后的日期（当天 0 点）
+    private var cache: [Date: ChineseCalendarInfo] = [:]
+    private let lock = NSLock()  // 线程安全锁
+    
+    private init() {}
+    
+    // MARK: - 同步单日查询（先查缓存，没有再计算）
     func getInfo(for date: Date) -> ChineseCalendarInfo {
+        let normalizedDate = Calendar.chinese.startOfDay(for: date)
+        
+        // 加锁读取缓存
+        lock.lock()
+        if let cached = cache[normalizedDate] {
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+        
+        // 缓存未命中，计算
+        let info = calculateInfo(for: normalizedDate)
+        
+        // 加锁写入缓存
+        lock.lock()
+        cache[normalizedDate] = info
+        lock.unlock()
+        
+        return info
+    }
+    
+    // MARK: - 异步批量加载某个月的所有日期信息
+    func getMonthInfo(year: Int, month: Int) async -> [Date: ChineseCalendarInfo] {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                var result: [Date: ChineseCalendarInfo] = [:]
+                
+                // 获取该月的天数范围
+                var comps = DateComponents()
+                comps.year = year
+                comps.month = month
+                comps.day = 1
+                
+                guard let firstDay = Calendar.chinese.date(from: comps),
+                      let range = Calendar.chinese.range(of: .day, in: .month, for: firstDay) else {
+                    continuation.resume(returning: [:])
+                    return
+                }
+                
+                // 遍历该月每一天，调用 getInfo（内部会使用缓存）
+                for day in 1...range.count {
+                    if let date = Calendar.chinese.date(byAdding: .day, value: day - 1, to: firstDay) {
+                        result[date] = self.getInfo(for: date)  // 线程安全
+                    }
+                }
+                
+                continuation.resume(returning: result)
+            }
+        }
+    }
+    
+    // MARK: - 核心计算逻辑（私有）
+    private func calculateInfo(for date: Date) -> ChineseCalendarInfo {
         let components = Calendar.chinese.dateComponents([.year, .month, .day], from: date)
         
         guard let year = components.year,
               let month = components.month,
               let day = components.day,
               let solarDay = try? SolarDay.fromYmd(year, month, day) else {
-            return fallbackInfo()
+            return ChineseCalendarInfo(
+                holiday: nil,
+                isOffDay: false,
+                workRestStatus: .none
+            )
         }
         
         let legal = solarDay.legalHoliday
         
-        // 节日名称：优先使用法定节假日名称（如“春节”），否则从公历节日描述中提取
         let festivalName: String?
         if let legal = legal {
             festivalName = legal.name
         } else if let festivalDesc = solarDay.festival?.description {
-            // 假设格式类似 "2026-01-01 元旦" 或 "2026年1月1日 元旦"
-            // 取最后一个空格后的内容作为节日名称
             festivalName = festivalDesc.components(separatedBy: " ").last
         } else {
             festivalName = nil
         }
         
-        // 计算休/班状态
         let workRestStatus: WorkRestStatus
         let isOffDay: Bool
         
@@ -49,14 +107,6 @@ final class ChineseCalendarService {
             holiday: festivalName,
             isOffDay: isOffDay,
             workRestStatus: workRestStatus
-        )
-    }
-    
-    private func fallbackInfo() -> ChineseCalendarInfo {
-        ChineseCalendarInfo(
-            holiday: nil,
-            isOffDay: false,
-            workRestStatus: .none
         )
     }
 }

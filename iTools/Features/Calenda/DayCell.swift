@@ -6,23 +6,19 @@ struct DayCell: View {
     let date: Date
     let currentDate: Date
     let isHighlighted: Bool
+    let info: ChineseCalendarInfo?   // 直接接收数据，不再内部加载
     let onTap: () -> Void
     
-    @State private var info: ChineseCalendarInfo?
-    
     private let calendar = Calendar.chinese
-    private let service = ChineseCalendarService.shared
     
     private var isCurrentMonth: Bool {
         calendar.isDate(date, equalTo: currentDate, toGranularity: .month)
     }
     
-    // 添加计算属性，替代原来的 info.subtitle
     private var subtitle: String {
         info?.holiday ?? ""
     }
     
-    // 添加计算属性，替代原来的 info.subtitleColor
     private var subtitleColor: Color {
         if let holiday = info?.holiday, !holiday.isEmpty {
             return .red
@@ -39,10 +35,10 @@ struct DayCell: View {
                     .font(.system(size: 16, weight: isHighlighted ? .bold : .regular, design: .rounded))
                     .monospacedDigit()
                 
-                Text(subtitle) // 使用新计算属性
+                Text(subtitle)
                     .font(.system(size: 9, weight: .medium))
                     .lineLimit(1)
-                    .foregroundStyle(isHighlighted ? .white.opacity(0.9) : subtitleColor) // 使用新计算属性
+                    .foregroundStyle(isHighlighted ? .white.opacity(0.9) : subtitleColor)
                     .frame(height: 12)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -62,9 +58,6 @@ struct DayCell: View {
         .foregroundStyle(foregroundColor)
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
-        .task(id: date) {
-            info = service.getInfo(for: date)  // 移除了 info = nil，避免闪烁
-        }
     }
     
     @ViewBuilder
