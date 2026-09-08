@@ -4,29 +4,45 @@ import SwiftUI
 
 struct MonthCalendarView: View {
     let date: Date
+    @Binding var selectedDate: Date?
     
     private let calendar = Calendar.current
     private let weekdays = ["一", "二", "三", "四", "五", "六", "日"]
-    private let rowSpacing: CGFloat = 4
     
     var body: some View {
         VStack(spacing: 0) {
-            LazyVGrid(columns: weekColumns, spacing: 0) {
-                ForEach(weekdays, id: \.self) { day in
+            // 星期头：固定高度，周六日红色
+            HStack(spacing: 0) {
+                ForEach(Array(weekdays.enumerated()), id: \.offset) { index, day in
                     Text(day)
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(height: 28)
+                        .foregroundStyle(index >= 5 ? Color.red : Color.secondary)
+                        .frame(maxWidth: .infinity)
                 }
             }
-            .padding(.bottom, rowSpacing)
+            .frame(height: 32)
+            .padding(.bottom, 4)
             
-            LazyVGrid(columns: weekColumns, spacing: rowSpacing) {
+            // 日期网格：无分割线，统一高亮
+            LazyVGrid(columns: weekColumns, spacing: 4) {
                 ForEach(daysInMonth, id: \.self) { d in
                     if let d {
-                        DayCell(date: d, currentDate: date)
+                        let isHighlighted: Bool = {
+                            if let selected = selectedDate {
+                                return calendar.isDate(d, inSameDayAs: selected)
+                            } else {
+                                return calendar.isDateInToday(d)
+                            }
+                        }()
+                        
+                        DayCell(
+                            date: d,
+                            currentDate: date,
+                            isHighlighted: isHighlighted,
+                            onTap: { selectedDate = d }
+                        )
                     } else {
-                        Color.clear.frame(height: 44)
+                        Color.clear.frame(minHeight: 52)
                     }
                 }
             }
@@ -38,23 +54,17 @@ struct MonthCalendarView: View {
     private var weekColumns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
     }
-    
     private var daysInMonth: [Date?] {
         guard let range = calendar.range(of: .day, in: .month, for: date),
               let firstDay = calendar.date(from: calendar.dateComponents([.year, .month], from: date)) else {
             return Array(repeating: nil, count: 42)
         }
-        
         let weekday = calendar.component(.weekday, from: firstDay)
         let leadingBlanksCount = (weekday == 1) ? 6 : (weekday - 2)
-        
         let leadingBlanks = Array(repeating: Optional<Date>.none, count: leadingBlanksCount)
-        let days = range.compactMap {
-            calendar.date(byAdding: .day, value: $0 - 1, to: firstDay)
-        }
+        let days = range.compactMap { calendar.date(byAdding: .day, value: $0 - 1, to: firstDay) }
         let trailingBlanksCount = 42 - leadingBlanksCount - days.count
         let trailingBlanks = Array(repeating: Optional<Date>.none, count: trailingBlanksCount)
-        
         return leadingBlanks + days.map { Optional($0) } + trailingBlanks
     }
 }
