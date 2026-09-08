@@ -8,14 +8,12 @@ struct ChineseCalendarView: View {
     @State private var selectedTabIndex: Int = 50
     @State private var selectedDate: Date?
     
-    private let calendar = Calendar.current
+    private let calendar = Calendar.chinese
     // /36(星期头) + 6×52(日期) + 5×4(间距) + 8(topPadding) + 安全余量
     private let calendarHeight: CGFloat = 370
     
     private let anchorDate: Date = {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "Asia/Shanghai")!
-        return cal.date(from: DateComponents(year: 2024, month: 1)) ?? Date()
+        return Calendar.chinese.date(from: DateComponents(year: 2024, month: 1)) ?? Date()
     }()
     
     private let visibleRange: Range<Int> = 0..<101

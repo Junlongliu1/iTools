@@ -6,7 +6,7 @@ struct MonthCalendarView: View {
     let date: Date
     @Binding var selectedDate: Date?
     
-    private let calendar = Calendar.current
+    private let calendar = Calendar.chinese
     private let weekdays = ["一", "二", "三", "四", "五", "六", "日"]
     
     var body: some View {

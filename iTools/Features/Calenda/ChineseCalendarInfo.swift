@@ -12,21 +12,17 @@ enum WorkRestStatus: Equatable {
 
 /// 日历单元格展示模型（名称保持不变，字段精简）
 struct ChineseCalendarInfo: Equatable {
-    let lunarDay: String          // 保留字段名，实际不再使用，传空字符串
-    let jieQi: String?            // 保留字段名，实际不再使用，始终为nil
-    let holiday: String?          // 仅节日当天有值
-    let isOffDay: Bool
-    let yi: [String]              // 保留字段名，实际不再使用，传空数组
-    let ji: [String]              // 保留字段名，实际不再使用，传空数组
+    let holiday: String?          // 节日名称
+    let isOffDay: Bool            // 是否休息（包括周末）
     let workRestStatus: WorkRestStatus
-    
-    /// 副标题：仅显示节日名称，无节日时返回空字符串
-    var subtitle: String {
-        holiday ?? ""
-    }
-    
-    var subtitleColor: Color {
-        if holiday != nil { return .red }
-        return .secondary
-    }
+}
+
+extension Calendar {
+    /// 中国标准时间日历（GMT+8）
+    static let chinese: Calendar = {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        cal.locale = Locale(identifier: "zh_CN") // 可选，影响月份、星期的本地化显示
+        return cal
+    }()
 }

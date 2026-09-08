@@ -6,7 +6,7 @@ import SwiftUI
 struct CalendarHeader: View {
     let date: Date
     
-    private let calendar = Calendar.current
+    private let calendar = Calendar.chinese
     
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {

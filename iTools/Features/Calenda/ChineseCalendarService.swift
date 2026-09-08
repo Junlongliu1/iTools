@@ -7,15 +7,9 @@ import Tyme4Swift
 final class ChineseCalendarService {
     static let shared = ChineseCalendarService()
     
-    private let gregorianCalendar: Calendar = {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "Asia/Shanghai")!
-        return cal
-    }()
-    
     // 函数名保持不变，内部逻辑精简为仅获取节假日
     func getInfo(for date: Date) -> ChineseCalendarInfo {
-        let components = gregorianCalendar.dateComponents([.year, .month, .day], from: date)
+        let components = Calendar.chinese.dateComponents([.year, .month, .day], from: date)
         
         guard let year = components.year,
               let month = components.month,
@@ -24,46 +18,44 @@ final class ChineseCalendarService {
             return fallbackInfo()
         }
         
-        // 仅获取公历节日名（节日当天）
-        let festivalName = solarDay.festival?.description
-        
-        // 仅获取法定假期区间（含调休）
         let legal = solarDay.legalHoliday
+        
+        // 节日名称：优先使用法定节假日名称（如“春节”），否则从公历节日描述中提取
+        let festivalName: String?
+        if let legal = legal {
+            festivalName = legal.name
+        } else if let festivalDesc = solarDay.festival?.description {
+            // 假设格式类似 "2026-01-01 元旦" 或 "2026年1月1日 元旦"
+            // 取最后一个空格后的内容作为节日名称
+            festivalName = festivalDesc.components(separatedBy: " ").last
+        } else {
+            festivalName = nil
+        }
         
         // 计算休/班状态
         let workRestStatus: WorkRestStatus
         let isOffDay: Bool
         
-        if let legal {
+        if let legal = legal {
             workRestStatus = legal.isWork ? .work : .rest
             isOffDay = !legal.isWork
         } else {
             workRestStatus = .none
-            let weekday = gregorianCalendar.component(.weekday, from: date)
+            let weekday = Calendar.chinese.component(.weekday, from: date)
             isOffDay = (weekday == 1 || weekday == 7)
         }
         
-        // 返回精简后的模型，废弃字段填空值
         return ChineseCalendarInfo(
-            lunarDay: "",
-            jieQi: nil,
             holiday: festivalName,
             isOffDay: isOffDay,
-            yi: [],
-            ji: [],
             workRestStatus: workRestStatus
         )
     }
     
-    // 函数名保持不变
     private func fallbackInfo() -> ChineseCalendarInfo {
         ChineseCalendarInfo(
-            lunarDay: "",
-            jieQi: nil,
             holiday: nil,
             isOffDay: false,
-            yi: [],
-            ji: [],
             workRestStatus: .none
         )
     }
