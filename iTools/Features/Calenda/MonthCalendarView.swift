@@ -29,22 +29,22 @@ struct MonthCalendarView: View {
             
             // 日期网格
             LazyVGrid(columns: weekColumns, spacing: 4) {
-                ForEach(daysInMonth, id: \.self) { d in
-                    if let d {
+                ForEach(Array(daysInMonth.enumerated()), id: \.offset) { index, d in
+                    if let date = d {
                         let isHighlighted: Bool = {
                             if let selected = selectedDate {
-                                return calendar.isDate(d, inSameDayAs: selected)
+                                return calendar.isDate(date, inSameDayAs: selected)
                             } else {
-                                return calendar.isDateInToday(d)
+                                return calendar.isDateInToday(date)
                             }
                         }()
                         
                         DayCell(
-                            date: d,
+                            date: date,
                             currentDate: date,
                             isHighlighted: isHighlighted,
-                            info: monthInfo[d],          // 直接传递缓存信息
-                            onTap: { selectedDate = d }
+                            info: monthInfo[date],
+                            onTap: { selectedDate = date }
                         )
                     } else {
                         Color.clear.frame(minHeight: 52)

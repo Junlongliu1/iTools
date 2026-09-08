@@ -10,11 +10,34 @@ enum WorkRestStatus: Equatable {
     case work       // 调休上班（红"班"）
 }
 
-/// 日历单元格展示模型（名称保持不变，字段精简）
+/// 日历单元格展示模型
 struct ChineseCalendarInfo: Equatable {
     let holiday: String?          // 节日名称
     let isOffDay: Bool            // 是否休息（包括周末）
     let workRestStatus: WorkRestStatus
+    let lunarDay: String?         // 农历日（如“初三”）
+    let jieQi: String?            // 节气名称（如“清明”）
+
+    /// 副标题：按优先级返回节日、节气、农历
+    var subtitle: String {
+        if let holiday = holiday, !holiday.isEmpty {
+            return holiday
+        }
+        if let jieQi = jieQi, !jieQi.isEmpty {
+            return jieQi
+        }
+        if let lunarDay = lunarDay, !lunarDay.isEmpty {
+            return lunarDay
+        }
+        return ""
+    }
+
+    var subtitleColor: Color {
+        if holiday != nil { return .red }
+        if jieQi != nil { return .green }
+        if lunarDay != nil { return .secondary }
+        return .secondary
+    }
 }
 
 extension Calendar {

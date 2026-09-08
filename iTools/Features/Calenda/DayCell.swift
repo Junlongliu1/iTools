@@ -15,17 +15,6 @@ struct DayCell: View {
         calendar.isDate(date, equalTo: currentDate, toGranularity: .month)
     }
     
-    private var subtitle: String {
-        info?.holiday ?? ""
-    }
-    
-    private var subtitleColor: Color {
-        if let holiday = info?.holiday, !holiday.isEmpty {
-            return .red
-        }
-        return .secondary
-    }
-    
     var body: some View {
         ZStack {
             backgroundShape
@@ -35,14 +24,16 @@ struct DayCell: View {
                     .font(.system(size: 16, weight: isHighlighted ? .bold : .regular, design: .rounded))
                     .monospacedDigit()
                 
-                Text(subtitle)
+                // 副标题显示：优先级 节日 > 节气 > 农历
+                Text(info?.subtitle ?? "")
                     .font(.system(size: 9, weight: .medium))
                     .lineLimit(1)
-                    .foregroundStyle(isHighlighted ? .white.opacity(0.9) : subtitleColor)
+                    .foregroundStyle(isHighlighted ? .white.opacity(0.9) : (info?.subtitleColor ?? .secondary))
                     .frame(height: 12)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             
+            // 角标层保持不变
             if let info {
                 switch info.workRestStatus {
                 case .rest:
