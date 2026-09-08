@@ -6,7 +6,7 @@ struct DayCell: View {
     let date: Date
     let currentDate: Date
     let isHighlighted: Bool
-    let info: ChineseCalendarInfo?   // 直接接收数据，不再内部加载
+    let info: ChineseCalendarInfo?
     let onTap: () -> Void
     
     private let calendar = Calendar.chinese
@@ -33,7 +33,6 @@ struct DayCell: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             
-            // 角标层保持不变
             if let info {
                 switch info.workRestStatus {
                 case .rest:

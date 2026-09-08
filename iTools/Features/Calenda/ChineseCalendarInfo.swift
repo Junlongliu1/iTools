@@ -3,7 +3,7 @@
 import Foundation
 import SwiftUI
 
-// 节假日调休状态（名称保持不变）
+// 节假日调休状态
 enum WorkRestStatus: Equatable {
     case none       // 普通工作日/周末
     case rest       // 法定节假日休息（绿"休"）
@@ -45,7 +45,7 @@ extension Calendar {
     static let chinese: Calendar = {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "Asia/Shanghai")!
-        cal.locale = Locale(identifier: "zh_CN") // 可选，影响月份、星期的本地化显示
+        cal.locale = Locale(identifier: "zh_CN")
         return cal
     }()
 }
