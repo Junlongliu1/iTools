@@ -1,29 +1,44 @@
-import SwiftUI
+// 主容器视图，管理月份状态、TabView 翻页和双向同步逻辑
 
-// MARK: - 主视图容器
+import SwiftUI
+import Tyme4Swift
+
 struct ChineseCalendarView: View {
     @State private var currentMonth: Date = Date()
-    @StateObject private var holidayProvider = HolidayManager.shared
+    // ✅ 初始偏移量设为一个较大的中间值，预留左右滑动空间
+    @State private var selectedTabIndex: Int = 50
     
     private let calendar = Calendar.current
     private let calendarHeight: CGFloat = 304
-
-    @State private var selectedTabIndex: Int = 6
     
+    // ✅ 基准日期固定为 App 启动时的月初
+    private let anchorDate: Date = {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        return cal.date(from: cal.dateComponents([.year, .month], from: Date())) ?? Date()
+    }()
+    
+    // ✅ 动态生成足够大的月份范围（前后各50个月 ≈ 8年）
+    // 实际使用中几乎不可能滑到边界
+    private let visibleRange: Range<Int> = -50..<51
+    
+    private func dateForIndex(_ index: Int) -> Date {
+        let offset = index - 50
+        return calendar.date(byAdding: .month, value: offset, to: anchorDate) ?? anchorDate
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 CalendarHeader(date: $currentMonth)
                 
                 Divider()
-
+                
                 TabView(selection: $selectedTabIndex) {
-                    ForEach(monthRange.indices, id: \.self) { index in
-                        MonthCalendarView(
-                            date: monthRange[index],
-                            provider: holidayProvider
-                        )
-                        .tag(index)
+                    ForEach(visibleRange, id: \.self) { index in
+                        MonthCalendarView(date: dateForIndex(index))
+                            .tag(index)
+                            .id(index) // ✅ 用整数索引作为ID，比时间戳更高效稳定
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
@@ -38,156 +53,36 @@ struct ChineseCalendarView: View {
                     Button("今天") {
                         withAnimation(.spring(response: 0.3)) {
                             currentMonth = Date()
-                            selectedTabIndex = 6
+                            selectedTabIndex = 50
                         }
                     }
                     .fontWeight(.medium)
                 }
             }
-
+            // ✅ 单向驱动：index → date
             .onChange(of: selectedTabIndex) { _, newIndex in
-                let offset = newIndex - 6
-                if let newDate = calendar.date(byAdding: .month, value: offset, to: anchorDate) {
+                let newDate = dateForIndex(newIndex)
+                if !calendar.isDate(newDate, equalTo: currentMonth, toGranularity: .month) {
                     currentMonth = newDate
                 }
             }
-            .onChange(of: currentMonth) { _, newDate in
-                let components = calendar.dateComponents([.year, .month], from: anchorDate)
-                let newComponents = calendar.dateComponents([.year, .month], from: newDate)
+            // ✅ 反向同步：date → index（仅外部修改时触发）
+            .onChange(of: currentMonth) { oldValue, newValue in
+                guard !calendar.isDate(oldValue, equalTo: newValue, toGranularity: .month) else { return }
                 
-                guard let anchorMonths = calendar.dateComponents([.month], from: components, to: newComponents).month else { return }
-                let newIndex = 6 + anchorMonths
+                let monthsDiff = calendar.dateComponents([.month], from: anchorDate, to: newValue).month ?? 0
+                let targetIndex = 50 + monthsDiff
                 
-                if newIndex != selectedTabIndex && (0...12).contains(newIndex) {
-                    selectedTabIndex = newIndex
-                }
-            }
-        }
-    }
-    
-    /// 锚点日期：始终为当前真实月份，用于计算偏移
-    private var anchorDate: Date {
-        calendar.date(from: calendar.dateComponents([.year, .month], from: Date())) ?? Date()
-    }
-    
-    /// 生成以当前月为中心的 13 个月范围
-    private var monthRange: [Date] {
-        (-6...6).compactMap { offset in
-            calendar.date(byAdding: .month, value: offset, to: anchorDate)
-        }
-    }
-}
-
-// MARK: - 月视图 (移除所有外部 frame 约束，尺寸由 containerRelativeFrame 控制)
-struct MonthCalendarView: View {
-    let date: Date
-    let provider: HolidayDataProvider?
-    
-    private let calendar = Calendar.current
-    private let weekdays = ["一", "二", "三", "四", "五", "六", "日"]
-    private let rowSpacing: CGFloat = 4
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            LazyVGrid(columns: weekColumns, spacing: 0) {
-                ForEach(weekdays, id: \.self) { day in
-                    Text(day)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(height: 28)
-                }
-            }
-            .padding(.bottom, rowSpacing)
-            
-            LazyVGrid(columns: weekColumns, spacing: rowSpacing) {
-                ForEach(daysInMonth, id: \.self) { d in
-                    if let d {
-                        DayCell(date: d, currentDate: date, provider: provider)
-                    } else {
-                        Color.clear.frame(height: 44)
+                if visibleRange.contains(targetIndex) && targetIndex != selectedTabIndex {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        selectedTabIndex = targetIndex
                     }
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-    }
-    
-    private var weekColumns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
-    }
-    
-    private var daysInMonth: [Date?] {
-        guard let range = calendar.range(of: .day, in: .month, for: date),
-              let firstDay = calendar.date(from: calendar.dateComponents([.year, .month], from: date)) else {
-            return Array(repeating: nil, count: 42)
-        }
-        
-        let weekday = calendar.component(.weekday, from: firstDay)
-        let leadingBlanksCount = (weekday == 1) ? 6 : (weekday - 2)
-        
-        let leadingBlanks = Array(repeating: Optional<Date>.none, count: leadingBlanksCount)
-        let days = range.compactMap { calendar.date(byAdding: .day, value: $0 - 1, to: firstDay) }
-        let trailingBlanksCount = 42 - leadingBlanksCount - days.count
-        let trailingBlanks = Array(repeating: Optional<Date>.none, count: trailingBlanksCount)
-        
-        return leadingBlanks + days.map { Optional($0) } + trailingBlanks
     }
 }
-
-// MARK: - 日期单元格 (保持不变)
-struct DayCell: View {
-    let date: Date
-    let currentDate: Date
-    let provider: HolidayDataProvider?
     
-    private let calendar = Calendar.current
-    
-    private var isToday: Bool { calendar.isDateInToday(date) }
-    private var isCurrentMonth: Bool { calendar.isDate(date, equalTo: currentDate, toGranularity: .month) }
-    private var holidayInfo: (name: String, isOffDay: Bool)? { provider?.getHolidayInfo(for: date) }
-    
-    var body: some View {
-        VStack(spacing: 2) {
-            Text("\(calendar.component(.day, from: date))")
-                .font(.system(size: 16, weight: isToday ? .bold : .regular, design: .rounded))
-                .monospacedDigit()
-            
-            holidayLabel
-                .frame(height: 14)
-        }
-        .frame(maxWidth: .infinity, minHeight: 44)
-        .background(backgroundShape)
-        .foregroundStyle(foregroundColor)
-    }
-    
-    @ViewBuilder
-    private var holidayLabel: some View {
-        if let info = holidayInfo {
-            Text(info.name)
-                .font(.system(size: 9, weight: .medium))
-                .lineLimit(1)
-                .foregroundStyle(info.isOffDay ? .red : .orange)
-        } else {
-            Color.clear
-        }
-    }
-    
-    @ViewBuilder
-    private var backgroundShape: some View {
-        if isToday {
-            Circle()
-                .fill(Color.red)
-                .padding(4)
-        } else {
-            Color.clear
-        }
-    }
-    
-    private var foregroundColor: Color {
-        if isToday { return .white }
-        if !isCurrentMonth { return .secondary.opacity(0.3) }
-        if let info = holidayInfo, info.isOffDay { return .red }
-        return .primary
-    }
+#Preview {
+    ChineseCalendarView()
 }

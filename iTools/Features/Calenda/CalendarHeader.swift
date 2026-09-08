@@ -1,3 +1,5 @@
+// 头部组件，独立管理月份标题和切换按钮
+
 import SwiftUI
 
 struct CalendarHeader: View {
@@ -12,7 +14,6 @@ struct CalendarHeader: View {
             
             Spacer()
             
-            // 月份切换按钮
             HStack(spacing: 16) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.25)) {

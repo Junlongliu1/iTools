@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		FA87B89E304FA77100454F16 /* Tyme4Swift in Frameworks */ = {isa = PBXBuildFile; productRef = FA87B89D304FA77100454F16 /* Tyme4Swift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		FA95F8CA304E57A5008A2501 /* iTools.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = iTools.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FA87B89E304FA77100454F16 /* Tyme4Swift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +70,7 @@
 			);
 			name = iTools;
 			packageProductDependencies = (
+				FA87B89D304FA77100454F16 /* Tyme4Swift */,
 			);
 			productName = iTools;
 			productReference = FA95F8CA304E57A5008A2501 /* iTools.app */;
@@ -95,6 +101,7 @@
 			mainGroup = FA95F8C1304E57A5008A2501;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				FA87B89C304FA77100454F16 /* XCRemoteSwiftPackageReference "tyme4swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = FA95F8CB304E57A5008A2501 /* Products */;
@@ -336,6 +343,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		FA87B89C304FA77100454F16 /* XCRemoteSwiftPackageReference "tyme4swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/6tail/tyme4swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.5.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		FA87B89D304FA77100454F16 /* Tyme4Swift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FA87B89C304FA77100454F16 /* XCRemoteSwiftPackageReference "tyme4swift" */;
+			productName = Tyme4Swift;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = FA95F8C2304E57A5008A2501 /* Project object */;
 }
