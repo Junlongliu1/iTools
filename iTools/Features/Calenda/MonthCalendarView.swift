@@ -5,13 +5,15 @@ import SwiftUI
 struct MonthCalendarView: View {
     let date: Date
     @Binding var selectedDate: Date?
+    var onWeekSwitch: (() -> Void)? = nil
     
     private let calendar = Calendar.chinese
     private let weekdays = ["一", "二", "三", "四", "五", "六", "日"]
     
-    // 按月预计算的数据缓存
     @State private var monthInfo: [Date: ChineseCalendarInfo] = [:]
     @State private var isLoading = false
+    
+    @GestureState private var dragOffset: CGFloat = 0
     
     var body: some View {
         VStack(spacing: 0) {
@@ -27,28 +29,23 @@ struct MonthCalendarView: View {
             .frame(height: 32)
             .padding(.bottom, 4)
             
-            // 日期网格
             LazyVGrid(columns: weekColumns, spacing: 4) {
-                ForEach(Array(daysInMonth.enumerated()), id: \.offset) { index, d in
-                    if let date = d {
-                        let isHighlighted: Bool = {
-                            if let selected = selectedDate {
-                                return calendar.isDate(date, inSameDayAs: selected)
-                            } else {
-                                return calendar.isDateInToday(date)
-                            }
-                        }()
-                        
-                        DayCell(
-                            date: date,
-                            currentDate: date,
-                            isHighlighted: isHighlighted,
-                            info: monthInfo[date],
-                            onTap: { selectedDate = date }
-                        )
-                    } else {
-                        Color.clear.frame(minHeight: 52)
-                    }
+                ForEach(Array(daysInMonth.enumerated()), id: \.offset) { _, d in
+                    let isHighlighted: Bool = {
+                        if let selected = selectedDate {
+                            return calendar.isDate(d, inSameDayAs: selected)
+                        } else {
+                            return calendar.isDateInToday(d)
+                        }
+                    }()
+                    
+                    DayCell(
+                        date: d,
+                        currentDate: self.date,
+                        isHighlighted: isHighlighted,
+                        info: monthInfo[d],
+                        onTap: { selectedDate = d }
+                    )
                 }
             }
         }
@@ -59,7 +56,7 @@ struct MonthCalendarView: View {
         }
     }
     
-    // MARK: - 异步加载该月所有日期信息
+    // MARK: - 异步加载当月 + 补全日期的数据
     private func loadMonthData() async {
         guard !isLoading else { return }
         isLoading = true
@@ -70,12 +67,18 @@ struct MonthCalendarView: View {
             return
         }
         
-        // 调用服务批量获取
         let data = await ChineseCalendarService.shared.getMonthInfo(year: year, month: month)
         
-        // 更新 UI
+        let gridDates = daysInMonth
+        let extraDates = gridDates.filter { !calendar.isDate($0, equalTo: date, toGranularity: .month) }
+        
+        var extraInfo: [Date: ChineseCalendarInfo] = [:]
+        for d in extraDates {
+            extraInfo[d] = ChineseCalendarService.shared.getInfo(for: d)
+        }
+        
         await MainActor.run {
-            self.monthInfo = data
+            self.monthInfo = data.merging(extraInfo) { _, new in new }
             self.isLoading = false
         }
     }
@@ -84,17 +87,34 @@ struct MonthCalendarView: View {
         Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
     }
     
-    private var daysInMonth: [Date?] {
+    private var daysInMonth: [Date] {
         guard let range = calendar.range(of: .day, in: .month, for: date),
               let firstDay = calendar.date(from: calendar.dateComponents([.year, .month], from: date)) else {
-            return Array(repeating: nil, count: 42)
+            return []
         }
-        let weekday = calendar.component(.weekday, from: firstDay)
-        let leadingBlanksCount = (weekday == 1) ? 6 : (weekday - 2)
-        let leadingBlanks = Array(repeating: Optional<Date>.none, count: leadingBlanksCount)
-        let days = range.compactMap { calendar.date(byAdding: .day, value: $0 - 1, to: firstDay) }
-        let trailingBlanksCount = 42 - leadingBlanksCount - days.count
-        let trailingBlanks = Array(repeating: Optional<Date>.none, count: trailingBlanksCount)
-        return leadingBlanks + days.map { Optional($0) } + trailingBlanks
+        
+        let weekday = calendar.component(.weekday, from: firstDay) // 1=周日
+        let leadingBlanksCount = (weekday == 1) ? 6 : (weekday - 2) // 周一为起始
+        
+        // 上月补全（仅补齐第一行）
+        let leadingDates: [Date] = (1...max(leadingBlanksCount, 1)).reversed().compactMap {
+            leadingBlanksCount > 0 ? calendar.date(byAdding: .day, value: -$0, to: firstDay) : nil
+        }
+        
+        // 当月所有日期
+        let days: [Date] = range.compactMap {
+            calendar.date(byAdding: .day, value: $0 - 1, to: firstDay)
+        }
+        
+        let totalSoFar = leadingDates.count + days.count
+        let remainder = totalSoFar % 7
+        let trailingCount = remainder == 0 ? 0 : (7 - remainder)
+        
+        let lastDay = days.last ?? firstDay
+        let trailingDates: [Date] = (1...max(trailingCount, 1)).compactMap {
+            trailingCount > 0 ? calendar.date(byAdding: .day, value: $0, to: lastDay) : nil
+        }
+        
+        return leadingDates + days + trailingDates
     }
 }
