@@ -22,7 +22,7 @@ enum AudioFormat: String, CaseIterable {
         case .wav:     return "wav"
         case .ogg:     return "ogg"
         case .opus:    return "opus"
-        case .unknown: return "mp3"   // 兜底，保持旧行为
+        case .unknown: return "mp3"
         }
     }
 
@@ -39,12 +39,10 @@ enum AudioFormat: String, CaseIterable {
         }
     }
 
-    /// 当前只对 MP3 做 ID3v2 写入；其他容器若强行写 ID3 可能损坏文件
-    var supportsID3: Bool { self == .mp3 }
+    // supportsID3 已删除 —— 元数据写入由 spfk-metadata 自动适配容器格式
 
     // MARK: - 检测
 
-    /// 从磁盘文件读取头部魔数进行检测
     static func detect(at url: URL) -> AudioFormat {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return .unknown }
         defer { try? handle.close() }
@@ -56,18 +54,17 @@ enum AudioFormat: String, CaseIterable {
         return detect(from: head)
     }
 
-    /// 魔数识别
     static func detect(from data: Data) -> AudioFormat {
         let b = [UInt8](data)
         guard b.count >= 12 else { return .unknown }
 
-        // ID3v2 标签头 → MP3
+        // ID3v2 标签头 → MP3（这是文件识别用的魔数，不是元数据写入）
         if b[0] == 0x49, b[1] == 0x44, b[2] == 0x33 { return .mp3 }
 
         // fLaC
         if b[0] == 0x66, b[1] == 0x4C, b[2] == 0x61, b[3] == 0x43 { return .flac }
 
-        // OggS → OGG 容器，进一步区分 Opus / Vorbis
+        // OggS → 进一步区分 Opus / Vorbis
         if b[0] == 0x4F, b[1] == 0x67, b[2] == 0x67, b[3] == 0x53 {
             if data.range(of: Data("OpusHead".utf8)) != nil { return .opus }
             return .ogg
@@ -84,12 +81,10 @@ enum AudioFormat: String, CaseIterable {
             return .m4a
         }
 
-        // MPEG 帧同步：FF Ex / FF Fx / ADTS
+        // MPEG 帧同步 / ADTS
         if b[0] == 0xFF {
             let b1 = b[1]
-            // ADTS AAC：FF F1 / FF F9
             if b1 == 0xF1 || b1 == 0xF9 { return .aac }
-            // MPEG 音频帧（MP3）
             if (b1 & 0xE0) == 0xE0 { return .mp3 }
         }
 

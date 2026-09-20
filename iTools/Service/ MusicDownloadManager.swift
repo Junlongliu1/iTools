@@ -1,7 +1,6 @@
 // MusicDownloadManager.swift
 import Foundation
 import SwiftUI
-import ID3TagEditor
 
 // MARK: - 下载状态
 
@@ -187,7 +186,6 @@ final class MusicDownloadManager {
                 )
                 let (data, _) = try await URLSession.shared.data(from: realURL)
                 coverData = data
-                LocalFiles.saveCover(data, for: dest)
                 AppLogInfo("[MusicDownload] 封面已下载 (\(data.count) bytes)")
             } catch {
                 AppLogWarn("[MusicDownload] 封面下载失败（不影响音频）：\(error.localizedDescription)")
@@ -196,7 +194,6 @@ final class MusicDownloadManager {
 
         // 6. 歌词
         var lyricText: String?
-        var lyricLang: ID3FrameContentLanguage = .chi
         if !track.lyricId.isEmpty {
             do {
                 let lyricResp = try await MusicAPIService.shared.fetchLyric(
@@ -206,53 +203,34 @@ final class MusicDownloadManager {
 
                 if let t = lyricResp.tlyric, !t.isEmpty {
                     lyricText = t
-                    lyricLang = .chi
                 } else if !lyricResp.lyric.isEmpty {
                     lyricText = lyricResp.lyric
-                    lyricLang = lyricResp.lyric.containsCJK ? .chi : .eng
                 }
 
                 if let text = lyricText {
-                    AppLogInfo("[MusicDownload] 歌词已获取 (\(text.count) 字符, lang=\(lyricLang.rawValue))")
+                    AppLogInfo("[MusicDownload] 歌词已获取 (\(text.count) 字符)")
                 }
             } catch {
                 AppLogWarn("[MusicDownload] 歌词获取失败：\(error.localizedDescription)")
             }
         }
 
-        // 7. ID3 标签（仅 MP3 支持 ID3v2 写入）
-        if format.supportsID3 {
-            do {
-                try writeID3Tags(
-                    to: dest,
-                    track: track,
-                    coverData: coverData,
-                    lyricText: lyricText,
-                    lyricLanguage: lyricLang
-                )
-                AppLogInfo("[MusicDownload] ID3 标签写入成功")
-            } catch {
-                AppLogError("[MusicDownload] ID3 标签写入失败：\(error.localizedDescription)")
-            }
-        } else {
-            AppLogInfo("[MusicDownload] 跳过 ID3 写入（容器为 \(format.displayName)）")
-
-            // 非 MP3 容器无法嵌歌词，额外写出 .lrc sidecar 以便播放器识别
-            if let text = lyricText, !text.isEmpty {
-                let lrcURL = dest.deletingPathExtension().appendingPathExtension("lrc")
-                do {
-                    try text.write(to: lrcURL, atomically: true, encoding: .utf8)
-                    AppLogInfo("[MusicDownload] 已写出 .lrc 歌词")
-                } catch {
-                    AppLogWarn("[MusicDownload] .lrc 写出失败：\(error.localizedDescription)")
-                }
-            }
+        // 7. 写入元数据（spfk-metadata，自动适配容器格式）
+        //    - 封面 / 标题 / 歌手 / 专辑 / 歌词全部由 TagFile + TagPicture 处理
+        //    - 不再区分容器，不再有 .lrc sidecar
+        do {
+            try await SPFKMetadataAdapter.writeMetadata(
+                to: dest,
+                track: track,
+                coverData: coverData,
+                lyricText: lyricText
+            )
+            AppLogInfo("[MusicDownload] 元数据写入成功（\(format.displayName)）")
+        } catch {
+            AppLogError("[MusicDownload] 元数据写入失败：\(error.localizedDescription)")
         }
 
-        // 8. 元数据 sidecar（会自动 invalidate TrackMetaCache）
-        LocalFiles.saveTrack(track, for: dest)
-
-        // 9. 成功
+        // 8. 成功
         let sizeBytes = (try? FileManager.default
             .attributesOfItem(atPath: dest.path)[.size] as? Int64) ?? 0
 
@@ -266,51 +244,6 @@ final class MusicDownloadManager {
         )
         AppLogInfo("[MusicDownload] 完成：\(fileName) "
                    + "(\(sizeBytes) bytes, \(format.displayName), 第 \(attempt) 次尝试)")
-    }
-
-    // MARK: - ID3 标签写入（仅 MP3）
-
-    private func writeID3Tags(
-        to mp3URL: URL,
-        track: MusicTrack,
-        coverData: Data?,
-        lyricText: String?,
-        lyricLanguage: ID3FrameContentLanguage
-    ) throws {
-        let builder = ID32v3TagBuilder()
-
-        _ = builder
-            .title(frame: ID3FrameWithStringContent(content: track.name))
-            .artist(frame: ID3FrameWithStringContent(content: track.artist))
-
-        if !track.album.isEmpty {
-            _ = builder.album(frame: ID3FrameWithStringContent(content: track.album))
-        }
-
-        if let coverData, !coverData.isEmpty {
-            let picture = ID3FrameAttachedPicture(
-                picture: coverData,
-                type: .frontCover,
-                format: .jpeg
-            )
-            _ = builder.attachedPicture(pictureType: .frontCover, frame: picture)
-        }
-
-        if let lyricText, !lyricText.isEmpty {
-            let lyricsFrame = ID3FrameWithLocalizedContent(
-                language: lyricLanguage,
-                contentDescription: "Lyrics",
-                content: lyricText
-            )
-            _ = builder.unsynchronisedLyrics(
-                language: lyricLanguage,
-                frame: lyricsFrame
-            )
-        }
-
-        let id3Tag = builder.build()
-        let editor = ID3TagEditor()
-        try editor.write(tag: id3Tag, to: mp3URL.path)
     }
 
     // MARK: - 取消 / 删除 / 重置
@@ -330,6 +263,7 @@ final class MusicDownloadManager {
         if case .completed(let fileName) = state(for: track) {
             let url = musicDirectory.appendingPathComponent(fileName)
             LocalFiles.delete(url)
+            EmbeddedMetadataReader.shared.invalidate(url)
         }
         states[key] = .idle
         ToastCenter.shared.show("已删除本地文件", icon: "trash.fill", tint: .red)
@@ -445,7 +379,6 @@ private final class AudioDownloadSession: NSObject, URLSessionDownloadDelegate, 
         }
     }
 
-    /// ★ 只取消指定 key 对应的任务，不影响其他下载
     nonisolated func cancelAll(forKey key: String) {
         lock.lock()
         let victims = observers.values.filter { $0.key == key }

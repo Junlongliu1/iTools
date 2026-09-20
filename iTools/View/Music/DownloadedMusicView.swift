@@ -120,8 +120,6 @@ struct DownloadedMusicView: View {
         .scrollEdgeEffectStyle(.soft, for: .all)
     }
 
-    // MARK: 存储概览
-
     private var storageCard: some View {
         VStack(alignment: .leading, spacing: 0) {
             SettingsCardHeader(
@@ -150,8 +148,6 @@ struct DownloadedMusicView: View {
         .cardGlass()
     }
 
-    // MARK: 文件列表
-
     private var fileListCard: some View {
         VStack(alignment: .leading, spacing: 0) {
             SettingsCardHeader(
@@ -161,7 +157,11 @@ struct DownloadedMusicView: View {
             )
 
             ForEach(files, id: \.self) { url in
-                fileRow(url: url)
+                FileRow(url: url) {
+                    selectedFile = url
+                } onDelete: {
+                    pendingDelete = url
+                }
                 if url != files.last {
                     SettingsRowDivider()
                 }
@@ -172,30 +172,56 @@ struct DownloadedMusicView: View {
         .cardGlass()
     }
 
-    private func fileRow(url: URL) -> some View {
-        let track = TrackMetaCache.shared.track(for: url)
+    // MARK: - 辅助
 
-        return HStack(spacing: 12) {
-            Button {
-                selectedFile = url
-            } label: {
+    private func displayTitle(_ url: URL) -> String {
+        url.deletingPathExtension().lastPathComponent
+    }
+
+    // MARK: - 操作
+
+    private func reload() {
+        files = LocalFiles.listDownloadedMusic()
+        totalSize = LocalFiles.totalMusicSize()
+        AppLogInfo("[Downloaded] 加载 \(files.count) 个文件，共 \(LocalFiles.formattedSize(totalSize))")
+    }
+
+    private func deleteFile(_ url: URL) {
+        if LocalFiles.delete(url) {
+            EmbeddedMetadataReader.shared.invalidate(url)
+            ToastCenter.shared.show("已删除", icon: "trash.fill", tint: .red)
+            withAnimation(.easeOut(duration: 0.2)) { reload() }
+        }
+    }
+
+    private func performDelete(_ url: URL) {
+        deleteFile(url)
+        pendingDelete = nil
+    }
+
+    private func clearAll() {
+        let n = LocalFiles.deleteAll()
+        AppLogInfo("[Downloaded] 清空 \(n) 个文件")
+        ToastCenter.shared.show("已清空 \(n) 个文件", icon: "trash.fill", tint: .red)
+        withAnimation(.easeOut(duration: 0.2)) { reload() }
+    }
+}
+
+// MARK: - 单行（独立异步加载元数据）
+
+private struct FileRow: View {
+    let url: URL
+    let onTap: () -> Void
+    let onDelete: () -> Void
+
+    @State private var meta: AudioEmbeddedMetadata = .empty
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: onTap) {
                 HStack(spacing: 12) {
-                    coverThumbnail(for: url, track: track)
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(track?.name.isEmpty == false
-                             ? track!.name
-                             : url.deletingPathExtension().lastPathComponent)
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-
-                        Text(subtitle(url, track: track))
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-
+                    coverThumbnail
+                    infoColumn
                     Spacer(minLength: 8)
                 }
                 .contentShape(Rectangle())
@@ -218,9 +244,7 @@ struct DownloadedMusicView: View {
 
                 Divider()
 
-                Button(role: .destructive) {
-                    pendingDelete = url
-                } label: {
+                Button(role: .destructive, action: onDelete) {
                     Label("删除", systemImage: "trash")
                 }
             } label: {
@@ -236,19 +260,24 @@ struct DownloadedMusicView: View {
         }
         .padding(.leading, DSLayout.rowHorizontalPadding)
         .padding(.vertical, 4)
+        .task(id: url) {
+            meta = await EmbeddedMetadataReader.shared.metadata(for: url)
+        }
     }
 
-    // MARK: - 封面缩略图
-
-    @ViewBuilder
-    private func coverThumbnail(for url: URL, track: MusicTrack?) -> some View {
-        CoverImage(
-            picId: track?.picId ?? "",
-            source: track?.source ?? .netease,
-            localFile: LocalFiles.coverURL(for: url),
-            size: 300
-        ) {
-            fallbackThumbnail
+    private var coverThumbnail: some View {
+        EmbeddedCoverImage(audioURL: url) {
+            ZStack {
+                LinearGradient(
+                    colors: [Color.accentColor.opacity(0.22),
+                             Color.purple.opacity(0.22)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                Image(systemName: "music.note")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+            }
         }
         .frame(width: 46, height: 46)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -258,66 +287,31 @@ struct DownloadedMusicView: View {
         )
     }
 
-    private var fallbackThumbnail: some View {
-        ZStack {
-            LinearGradient(
-                colors: [Color.accentColor.opacity(0.22),
-                         Color.purple.opacity(0.22)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            Image(systemName: "music.note")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(Color.accentColor)
+    private var infoColumn: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(displayTitle)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+
+            Text(displaySubtitle)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
     }
 
-    // MARK: - 辅助
-
-    private func displayTitle(_ url: URL) -> String {
-        if let track = TrackMetaCache.shared.track(for: url), !track.name.isEmpty {
-            return track.name
-        }
+    private var displayTitle: String {
+        if let t = meta.title, !t.isEmpty { return t }
         return url.deletingPathExtension().lastPathComponent
     }
 
-    private func subtitle(_ url: URL, track: MusicTrack?) -> String {
+    private var displaySubtitle: String {
         let size = LocalFiles.formattedSize(LocalFiles.fileSize(url))
-
-        if let track, !track.artist.isEmpty {
-            return "\(track.artist) · \(size)"
+        if let artist = meta.artist, !artist.isEmpty {
+            return "\(artist) · \(size)"
         }
         return "\(size) · \(LocalFiles.formattedDate(url))"
-    }
-
-    // MARK: - 操作
-
-    private func reload() {
-        files = LocalFiles.listDownloadedMusic()
-        totalSize = LocalFiles.totalMusicSize()
-        for url in files {
-            _ = TrackMetaCache.shared.track(for: url)
-        }
-        AppLogInfo("[Downloaded] 加载 \(files.count) 个文件，共 \(LocalFiles.formattedSize(totalSize))")
-    }
-
-    private func deleteFile(_ url: URL) {
-        if LocalFiles.delete(url) {
-            ToastCenter.shared.show("已删除", icon: "trash.fill", tint: .red)
-            withAnimation(.easeOut(duration: 0.2)) { reload() }
-        }
-    }
-
-    private func performDelete(_ url: URL) {
-        deleteFile(url)
-        pendingDelete = nil
-    }
-
-    private func clearAll() {
-        let n = LocalFiles.deleteAll()
-        AppLogInfo("[Downloaded] 清空 \(n) 个文件")
-        ToastCenter.shared.show("已清空 \(n) 个文件", icon: "trash.fill", tint: .red)
-        withAnimation(.easeOut(duration: 0.2)) { reload() }
     }
 }
 
@@ -336,8 +330,7 @@ private struct FileDetailSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var showDeleteConfirm = false
-
-    private var track: MusicTrack? { TrackMetaCache.shared.track(for: url) }
+    @State private var meta: AudioEmbeddedMetadata = .empty
 
     var body: some View {
         NavigationStack {
@@ -345,6 +338,9 @@ private struct FileDetailSheet: View {
                 VStack(spacing: 18) {
                     hero
                     infoCard
+                    if let lyrics = meta.lyrics, !lyrics.isEmpty {
+                        lyricsCard(lyrics)
+                    }
                 }
                 .padding(.horizontal, DSLayout.horizontalPadding)
                 .padding(.top, 12)
@@ -358,8 +354,9 @@ private struct FileDetailSheet: View {
                     Button("完成") { dismiss() }
                 }
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                actionBar
+            .safeAreaInset(edge: .bottom, spacing: 0) { actionBar }
+            .task {
+                meta = await EmbeddedMetadataReader.shared.metadata(for: url)
             }
             .alert("删除文件？", isPresented: $showDeleteConfirm) {
                 Button("删除", role: .destructive) {
@@ -375,27 +372,34 @@ private struct FileDetailSheet: View {
 
     private var hero: some View {
         VStack(spacing: 12) {
-            CoverImage(
-                picId: track?.picId ?? "",
-                source: track?.source ?? .netease,
-                localFile: LocalFiles.coverURL(for: url),
-                size: 300
-            ) {
-                bigFallback
+            EmbeddedCoverImage(audioURL: url) {
+                ZStack {
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.95, green: 0.35, blue: 0.55),
+                            Color(red: 0.60, green: 0.30, blue: 0.90)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    Image(systemName: "music.note")
+                        .font(.system(size: 42, weight: .medium))
+                        .foregroundStyle(.white)
+                }
             }
             .frame(width: 120, height: 120)
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .shadow(color: .black.opacity(0.18), radius: 12, y: 6)
 
             VStack(spacing: 4) {
-                Text(track?.name ?? url.deletingPathExtension().lastPathComponent)
+                Text(meta.title ?? url.deletingPathExtension().lastPathComponent)
                     .font(.system(size: 16, weight: .semibold))
                     .multilineTextAlignment(.center)
                     .lineLimit(3)
                     .padding(.horizontal, 20)
 
-                if let track, !track.artist.isEmpty {
-                    Text(track.artist)
+                if let artist = meta.artist, !artist.isEmpty {
+                    Text(artist)
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -407,36 +411,20 @@ private struct FileDetailSheet: View {
         .padding(.vertical, 8)
     }
 
-    private var bigFallback: some View {
-        ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.95, green: 0.35, blue: 0.55),
-                    Color(red: 0.60, green: 0.30, blue: 0.90)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            Image(systemName: "music.note")
-                .font(.system(size: 42, weight: .medium))
-                .foregroundStyle(.white)
-        }
-    }
-
     private var infoCard: some View {
         VStack(alignment: .leading, spacing: 0) {
             SettingsCardHeader(icon: "doc.text", iconColor: .blue, title: "详细信息")
 
-            if let track {
-                infoRow(label: "歌曲", value: track.name)
+            if let t = meta.title, !t.isEmpty {
+                infoRow(label: "歌曲", value: t)
                 SettingsRowDivider()
-                infoRow(label: "歌手", value: track.artist)
+            }
+            if let a = meta.artist, !a.isEmpty {
+                infoRow(label: "歌手", value: a)
                 SettingsRowDivider()
-                if !track.album.isEmpty {
-                    infoRow(label: "专辑", value: track.album)
-                    SettingsRowDivider()
-                }
-                infoRow(label: "音乐源", value: track.source.displayName)
+            }
+            if let al = meta.album, !al.isEmpty {
+                infoRow(label: "专辑", value: al)
                 SettingsRowDivider()
             }
 
@@ -446,9 +434,30 @@ private struct FileDetailSheet: View {
             SettingsRowDivider()
             infoRow(label: "格式",   value: url.pathExtension.uppercased())
             SettingsRowDivider()
+            infoRow(label: "嵌入封面", value: meta.hasCover ? "有" : "无")
+            SettingsRowDivider()
+            infoRow(label: "嵌入歌词", value: meta.hasLyrics ? "有" : "无")
+            SettingsRowDivider()
             infoRow(label: "创建时间", value: LocalFiles.formattedDate(url))
             SettingsRowDivider()
             infoRow(label: "位置",   value: "Documents/Music/", monospaced: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardGlass()
+    }
+
+    private func lyricsCard(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SettingsCardHeader(icon: "text.quote", iconColor: .purple, title: "歌词（来自音频文件）")
+
+            Text(text)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, DSLayout.rowHorizontalPadding)
+                .padding(.bottom, 16)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardGlass()

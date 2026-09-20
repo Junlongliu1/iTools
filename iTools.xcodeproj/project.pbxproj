@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		FA84DB0D305FB99400F3DB2C /* ID3TagEditor in Frameworks */ = {isa = PBXBuildFile; productRef = FA84DB0C305FB99400F3DB2C /* ID3TagEditor */; };
+		FA7484EC305FFDD10015E05A /* SPFKMetadata in Frameworks */ = {isa = PBXBuildFile; productRef = FA7484EB305FFDD10015E05A /* SPFKMetadata */; };
 		FA84DB1D305FDEDE00F3DB2C /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FA84DB1C305FDEDE00F3DB2C /* WidgetKit.framework */; };
 		FA84DB1F305FDEDE00F3DB2C /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FA84DB1E305FDEDE00F3DB2C /* SwiftUI.framework */; };
 		FA84DB2E305FDEE000F3DB2C /* CalendarWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FA84DB1A305FDEDE00F3DB2C /* CalendarWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -94,7 +94,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				FA84DB0D305FB99400F3DB2C /* ID3TagEditor in Frameworks */,
+				FA7484EC305FFDD10015E05A /* SPFKMetadata in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -173,7 +173,7 @@
 			);
 			name = iTools;
 			packageProductDependencies = (
-				FA84DB0C305FB99400F3DB2C /* ID3TagEditor */,
+				FA7484EB305FFDD10015E05A /* SPFKMetadata */,
 			);
 			productName = iTools;
 			productReference = FA95F8CA304E57A5008A2501 /* iTools.app */;
@@ -207,7 +207,7 @@
 			mainGroup = FA95F8C1304E57A5008A2501;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				FA84DB0B305FB99400F3DB2C /* XCRemoteSwiftPackageReference "ID3TagEditor" */,
+				FA7484EA305FFDD10015E05A /* XCRemoteSwiftPackageReference "spfk-metadata" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = FA95F8CB304E57A5008A2501 /* Products */;
@@ -551,21 +551,21 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		FA84DB0B305FB99400F3DB2C /* XCRemoteSwiftPackageReference "ID3TagEditor" */ = {
+		FA7484EA305FFDD10015E05A /* XCRemoteSwiftPackageReference "spfk-metadata" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/chicio/ID3TagEditor.git";
+			repositoryURL = "https://github.com/ryanfrancesconi/spfk-metadata";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 5.5.0;
+				minimumVersion = 1.15.1;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		FA84DB0C305FB99400F3DB2C /* ID3TagEditor */ = {
+		FA7484EB305FFDD10015E05A /* SPFKMetadata */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = FA84DB0B305FB99400F3DB2C /* XCRemoteSwiftPackageReference "ID3TagEditor" */;
-			productName = ID3TagEditor;
+			package = FA7484EA305FFDD10015E05A /* XCRemoteSwiftPackageReference "spfk-metadata" */;
+			productName = SPFKMetadata;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

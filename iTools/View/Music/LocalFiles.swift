@@ -54,53 +54,6 @@ enum LocalFiles {
         listDownloadedMusic().reduce(Int64(0)) { $0 + fileSize($1) }
     }
 
-    // MARK: - Sidecar 文件
-
-    static func metaURL(for audioURL: URL) -> URL {
-        audioURL.deletingPathExtension().appendingPathExtension("json")
-    }
-
-    static func coverURL(for audioURL: URL) -> URL? {
-        let cover = audioURL.deletingPathExtension().appendingPathExtension("jpg")
-        return FileManager.default.fileExists(atPath: cover.path) ? cover : nil
-    }
-
-    static func loadTrack(for audioURL: URL) -> MusicTrack? {
-        let meta = metaURL(for: audioURL)
-        guard FileManager.default.fileExists(atPath: meta.path) else { return nil }
-        guard let data = try? Data(contentsOf: meta) else { return nil }
-        return try? JSONDecoder().decode(MusicTrack.self, from: data)
-    }
-
-    @discardableResult
-    static func saveTrack(_ track: MusicTrack, for audioURL: URL) -> Bool {
-        let meta = metaURL(for: audioURL)
-        guard let data = try? JSONEncoder().encode(track) else {
-            AppLogError("[LocalFiles] 编码 MusicTrack 失败")
-            return false
-        }
-        do {
-            try data.write(to: meta, options: .atomic)
-            TrackMetaCache.shared.invalidate(audioURL)
-            return true
-        } catch {
-            AppLogError("[LocalFiles] 保存元数据失败: \(error.localizedDescription)")
-            return false
-        }
-    }
-
-    @discardableResult
-    static func saveCover(_ imageData: Data, for audioURL: URL) -> Bool {
-        let cover = audioURL.deletingPathExtension().appendingPathExtension("jpg")
-        do {
-            try imageData.write(to: cover, options: .atomic)
-            return true
-        } catch {
-            AppLogError("[LocalFiles] 保存封面失败: \(error.localizedDescription)")
-            return false
-        }
-    }
-
     // MARK: - 格式化
 
     static func formattedSize(_ bytes: Int64) -> String {
@@ -137,13 +90,6 @@ enum LocalFiles {
         } catch {
             AppLogError("[LocalFiles] 删除失败: \(error.localizedDescription)")
         }
-
-        try? fm.removeItem(at: metaURL(for: url))
-        if let cover = coverURL(for: url) {
-            try? fm.removeItem(at: cover)
-        }
-
-        TrackMetaCache.shared.invalidate(url)
         return ok
     }
 
