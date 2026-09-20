@@ -28,7 +28,6 @@ private struct RectangularCalendarView: View {
         static let headerFontSize: CGFloat    = 9
         static let metaFontSize: CGFloat      = 12
         static let bigDayFontSize: CGFloat    = 34
-        static let todayRingWidth: CGFloat    = 1.5
     }
 
     var body: some View {
@@ -57,6 +56,15 @@ private struct RectangularCalendarView: View {
 
             Spacer(minLength: 0)
 
+            bigDay
+        }
+        .frame(maxHeight: .infinity, alignment: .leading)
+    }
+
+    /// 左侧大数字：彩色模式显示红色，其他模式回退系统强调色
+    @ViewBuilder
+    private var bigDay: some View {
+        if renderingMode == .fullColor {
             Text("\(entry.dayNumber)")
                 .font(.system(size: Metrics.bigDayFontSize,
                               weight: .bold,
@@ -64,9 +72,18 @@ private struct RectangularCalendarView: View {
                 .monospacedDigit()
                 .minimumScaleFactor(0.7)
                 .lineLimit(1)
+                .foregroundStyle(Color.red)
+        } else {
+            Text("\(entry.dayNumber)")
+                .font(.system(size: Metrics.bigDayFontSize,
+                              weight: .bold,
+                              design: .rounded))
+                .monospacedDigit()
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
+                .foregroundStyle(.primary)
                 .widgetAccentable()
         }
-        .frame(maxHeight: .infinity, alignment: .leading)
     }
 
     // MARK: - 右侧：3 周日历
@@ -86,7 +103,6 @@ private struct RectangularCalendarView: View {
 
             // 三行日期
             if entry.weeks.isEmpty {
-                // 兜底：数据异常时占位，避免空壳
                 Color.clear.frame(height: Metrics.cellSize * 3)
             } else {
                 ForEach(Array(entry.weeks.enumerated()), id: \.offset) { _, week in
@@ -120,23 +136,28 @@ private struct RectangularCalendarView: View {
         }
     }
 
-    /// 今日高亮：全色模式用白底黑字；强调模式用描边 + widgetAccentable
+    /// 今日高亮：圆形磨砂底座（无描边）
     @ViewBuilder
     private func todayCell(_ day: CalendarDay) -> some View {
+        let shape = Circle()
+
         if renderingMode == .fullColor {
             Text("\(day.day)")
                 .font(.system(size: Metrics.dayFontSize, weight: .bold))
-                .foregroundStyle(Color.black)
+                .foregroundStyle(Color.white)
                 .frame(width: Metrics.cellSize, height: Metrics.cellSize)
-                .background(Circle().fill(Color.white))
+                .background(
+                    shape.fill(.ultraThinMaterial)
+                )
         } else {
+            // 强调 / 单色模式下磨砂会被系统去饱和，
+            // 用半透明 primary 兜底，保证"今天"仍然看得清
             Text("\(day.day)")
                 .font(.system(size: Metrics.dayFontSize, weight: .bold))
                 .foregroundStyle(.primary)
                 .frame(width: Metrics.cellSize, height: Metrics.cellSize)
                 .background(
-                    Circle()
-                        .strokeBorder(.primary, lineWidth: Metrics.todayRingWidth)
+                    shape.fill(Color.primary.opacity(0.18))
                 )
                 .widgetAccentable()
         }
