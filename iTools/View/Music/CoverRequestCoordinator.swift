@@ -13,6 +13,11 @@ actor CoverRequestCoordinator {
 
     private var nextSlotTime: Date = .distantPast
     private var negativeCache: [String: Date] = [:]
+    
+    /// 清空 503 负缓存（缓存管理页「清除图片缓存」调用）
+    func clearNegativeCache() {
+        negativeCache.removeAll()
+    }
 
     func waitForSlot() async {
         let now = Date()

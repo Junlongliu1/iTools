@@ -4,17 +4,21 @@ import SwiftUI
 private enum SettingsRoute: Hashable {
     case logs
     case about
+    case cache
 }
 
 struct SettingsView: View {
     @AppStorage("appColorScheme") private var appColorScheme: AppColorScheme = .system
     @State private var path = NavigationPath()
 
+    private let cacheManager = CacheManager.shared
+
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
                 GlassEffectContainer(spacing: DSLayout.cardSpacing) {
                     LazyVStack(spacing: DSLayout.cardSpacing) {
+                        storageCard
                         appearanceCard
                         developerCard
                     }
@@ -34,12 +38,44 @@ struct SettingsView: View {
                 switch route {
                 case .logs:  LogViewerView()
                 case .about: AboutView()
+                case .cache: CacheManagementView()
                 }
+            }
+            .task {
+                await cacheManager.refresh()
             }
         }
     }
 
-    // MARK: - 外观（恢复为分段选择器）
+    // MARK: - 存储
+
+    private var storageCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SettingsCardHeader(
+                icon: "internaldrive.fill",
+                iconColor: .indigo,
+                title: "存储"
+            )
+
+            Button { path.append(SettingsRoute.cache) } label: {
+                SettingsRow(
+                    title: "缓存管理",
+                    subtitle: "清理图片、网络与临时文件",
+                    badge: cacheBadge
+                )
+            }
+            .buttonStyle(GlassRowButtonStyle())
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardGlass()
+    }
+
+    private var cacheBadge: String? {
+        guard cacheManager.totalBytes > 0 else { return nil }
+        return LocalFiles.formattedSize(Int64(cacheManager.totalBytes))
+    }
+
+    // MARK: - 外观
 
     private var appearanceCard: some View {
         VStack(alignment: .leading, spacing: 0) {
