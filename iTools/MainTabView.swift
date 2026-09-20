@@ -14,7 +14,9 @@ struct MainTabView: View {
                 MusicSearchView()
             }
             Tab("文件", systemImage: "folder.fill", value: AppTab.files) {
-                FilesPlaceholderView()
+                NavigationStack {
+                    DownloadedMusicView()
+                }
             }
             Tab("提醒", systemImage: "checklist", value: AppTab.reminders) {
                 RemindersPlaceholderView()
@@ -51,12 +53,6 @@ private struct PlaceholderScreen: View {
             .background(Color(.systemGroupedBackground))
             .navigationTitle(title)
         }
-    }
-}
-
-private struct FilesPlaceholderView: View {
-    var body: some View {
-        PlaceholderScreen(title: "文件", icon: "folder.fill", message: "文件功能开发中")
     }
 }
 

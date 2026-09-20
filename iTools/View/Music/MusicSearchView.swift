@@ -101,121 +101,10 @@ final class MusicSearchModel {
     }
 }
 
-// MARK: - 主视图
+// MARK: - 主视图（作为「音乐」Tab 首页）
 
 struct MusicSearchView: View {
     @State private var model = MusicSearchModel()
-    @State private var showSearchSheet = false
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                LazyVStack(spacing: DSLayout.cardSpacing) {
-                    entryCard
-                    attributionFooter
-                }
-                .padding(.horizontal, DSLayout.horizontalPadding)
-                .padding(.top, 8)
-                .padding(.bottom, 28)
-            }
-            .scrollEdgeEffectStyle(.soft, for: .all)
-            .background(Color(.systemGroupedBackground))
-            .navigationTitle("音乐")
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        showSearchSheet = true
-                    } label: {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 15, weight: .medium))
-                    }
-                    .accessibilityLabel("搜索")
-
-                    NavigationLink {
-                        DownloadedMusicView()
-                    } label: {
-                        Image(systemName: "internaldrive")
-                            .font(.system(size: 15, weight: .medium))
-                    }
-                    .accessibilityLabel("已下载")
-                }
-            }
-            .sheet(isPresented: $showSearchSheet) {
-                SearchSheet(model: model)
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
-            }
-        }
-    }
-
-    // MARK: - 首页入口
-
-    private var entryCard: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "music.note.list")
-                .font(.system(size: 44, weight: .light))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [Color.accentColor, Color.purple],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            Text("搜索你喜欢的音乐")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(.primary)
-
-            Text("点击右上角 🔍 开始")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-
-            Button {
-                showSearchSheet = true
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 13, weight: .semibold))
-                    Text("开始搜索")
-                        .font(.system(size: 14, weight: .semibold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 22)
-                .padding(.vertical, 10)
-                .background(Capsule().fill(Color.accentColor))
-                .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .padding(.top, 6)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 42)
-        .cardGlass()
-    }
-
-    // MARK: - 页脚署名
-
-    private var attributionFooter: some View {
-        VStack(spacing: 4) {
-            Text("音乐数据由 GD音乐台 (music.gdstudio.xyz) 提供")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-            Text("资源来自网络，仅供学习参考，请勿传播或商用")
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary.opacity(0.7))
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, alignment: .center)
-        .padding(.top, 8)
-        .padding(.horizontal, 12)
-    }
-}
-
-// MARK: - 搜索面板
-
-private struct SearchSheet: View {
-    @Bindable var model: MusicSearchModel
-    @Environment(\.dismiss) private var dismiss
     @Bindable private var historyStore = SearchHistoryStore.shared
     @FocusState private var isFocused: Bool
 
@@ -230,6 +119,7 @@ private struct SearchSheet: View {
                             optionsCard
                             resultArea
                             historySection
+                            attributionFooter
                         }
                     }
                     .padding(.horizontal, DSLayout.horizontalPadding)
@@ -239,19 +129,7 @@ private struct SearchSheet: View {
                 .scrollEdgeEffectStyle(.soft, for: .all)
             }
             .background(Color(.systemGroupedBackground))
-            .navigationTitle("搜索音乐")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("完成") { dismiss() }
-                        .fontWeight(.medium)
-                }
-            }
-        }
-        .onAppear {
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(300))
-                isFocused = true
-            }
+            .navigationTitle("音乐")
         }
     }
 
@@ -621,6 +499,23 @@ private struct SearchSheet: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 26)
         .cardGlass()
+    }
+
+    // MARK: - 页脚署名
+
+    private var attributionFooter: some View {
+        VStack(spacing: 4) {
+            Text("音乐数据由 GD音乐台 (music.gdstudio.xyz) 提供")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+            Text("资源来自网络，仅供学习参考，请勿传播或商用")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary.opacity(0.7))
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.top, 8)
+        .padding(.horizontal, 12)
     }
 
     // MARK: - 提交
