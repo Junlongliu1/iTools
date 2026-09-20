@@ -164,8 +164,11 @@ final class MusicDownloadManager {
             }
         }
 
-        // 4. 音频落盘
-        let fileName = uniqueFileName(for: track)
+        // 4. 检测真实容器格式，按真实格式命名并落盘
+        let format = AudioFormat.detect(at: tempURL)
+        AppLogInfo("[MusicDownload] 容器格式：\(format.displayName)（.\(format.fileExtension)）")
+
+        let fileName = uniqueFileName(for: track, format: format)
         let dest = musicDirectory.appendingPathComponent(fileName)
 
         if FileManager.default.fileExists(atPath: dest.path) {
@@ -217,18 +220,33 @@ final class MusicDownloadManager {
             }
         }
 
-        // 7. ID3 标签
-        do {
-            try writeID3Tags(
-                to: dest,
-                track: track,
-                coverData: coverData,
-                lyricText: lyricText,
-                lyricLanguage: lyricLang
-            )
-            AppLogInfo("[MusicDownload] ID3 标签写入成功")
-        } catch {
-            AppLogError("[MusicDownload] ID3 标签写入失败：\(error.localizedDescription)")
+        // 7. ID3 标签（仅 MP3 支持 ID3v2 写入）
+        if format.supportsID3 {
+            do {
+                try writeID3Tags(
+                    to: dest,
+                    track: track,
+                    coverData: coverData,
+                    lyricText: lyricText,
+                    lyricLanguage: lyricLang
+                )
+                AppLogInfo("[MusicDownload] ID3 标签写入成功")
+            } catch {
+                AppLogError("[MusicDownload] ID3 标签写入失败：\(error.localizedDescription)")
+            }
+        } else {
+            AppLogInfo("[MusicDownload] 跳过 ID3 写入（容器为 \(format.displayName)）")
+
+            // 非 MP3 容器无法嵌歌词，额外写出 .lrc sidecar 以便播放器识别
+            if let text = lyricText, !text.isEmpty {
+                let lrcURL = dest.deletingPathExtension().appendingPathExtension("lrc")
+                do {
+                    try text.write(to: lrcURL, atomically: true, encoding: .utf8)
+                    AppLogInfo("[MusicDownload] 已写出 .lrc 歌词")
+                } catch {
+                    AppLogWarn("[MusicDownload] .lrc 写出失败：\(error.localizedDescription)")
+                }
+            }
         }
 
         // 8. 元数据 sidecar（会自动 invalidate TrackMetaCache）
@@ -247,10 +265,10 @@ final class MusicDownloadManager {
             tint: .green
         )
         AppLogInfo("[MusicDownload] 完成：\(fileName) "
-                   + "(\(sizeBytes) bytes, 第 \(attempt) 次尝试)")
+                   + "(\(sizeBytes) bytes, \(format.displayName), 第 \(attempt) 次尝试)")
     }
 
-    // MARK: - ID3 标签写入
+    // MARK: - ID3 标签写入（仅 MP3）
 
     private func writeID3Tags(
         to mp3URL: URL,
@@ -326,7 +344,7 @@ final class MusicDownloadManager {
 
     // MARK: - 文件名
 
-    private func uniqueFileName(for track: MusicTrack) -> String {
+    private func uniqueFileName(for track: MusicTrack, format: AudioFormat) -> String {
         let raw = "\(track.artist) - \(track.name)"
         let illegal = CharacterSet(charactersIn: "/\\:*?\"<>|\n\r\t")
         var cleaned = raw.components(separatedBy: illegal).joined()
@@ -334,12 +352,13 @@ final class MusicDownloadManager {
         if cleaned.isEmpty { cleaned = track.id }
         let base = String(cleaned.prefix(80))
 
-        var name = "\(base).mp3"
+        let ext = format.fileExtension
+        var name = "\(base).\(ext)"
         var index = 1
         while FileManager.default.fileExists(
             atPath: musicDirectory.appendingPathComponent(name).path
         ) {
-            name = "\(base) (\(index)).mp3"
+            name = "\(base) (\(index)).\(ext)"
             index += 1
         }
         return name

@@ -1,6 +1,7 @@
 // LocalFiles.swift
 import Foundation
 import UIKit
+import SwiftUI
 
 /// 本地文件系统工具
 enum LocalFiles {
@@ -31,7 +32,9 @@ enum LocalFiles {
             options: [.skipsHiddenFiles]
         ) else { return [] }
 
-        let audioExtensions: Set<String> = ["mp3", "m4a", "aac", "flac", "wav"]
+        let audioExtensions: Set<String> = [
+            "mp3", "m4a", "aac", "flac", "wav", "ogg", "opus"
+        ]
 
         return urls
             .filter { audioExtensions.contains($0.pathExtension.lowercased()) }
@@ -153,32 +156,59 @@ enum LocalFiles {
         return count
     }
 
+    @MainActor
     static func share(_ urls: [URL], from view: UIView? = nil) {
         guard !urls.isEmpty else { return }
+
+        guard let presenter = topViewController() else {
+            AppLogError("[LocalFiles] 分享失败：找不到 presenter")
+            ToastCenter.shared.show("分享失败，请重试", icon: "xmark.circle.fill", tint: .red)
+            return
+        }
+
         let activity = UIActivityViewController(
             activityItems: urls,
             applicationActivities: nil
         )
 
-        guard let scene = UIApplication.shared.connectedScenes
-            .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
-              let root = scene.windows.first(where: { $0.isKeyWindow })?.rootViewController
-        else { return }
-
         if let popover = activity.popoverPresentationController {
-            popover.sourceView = view ?? root.view
-            popover.sourceRect = view?.bounds ?? CGRect(
-                x: root.view.bounds.midX,
-                y: root.view.bounds.midY,
-                width: 1, height: 1
-            )
+            if let view {
+                popover.sourceView = view
+                popover.sourceRect = view.bounds
+            } else {
+                popover.sourceView = presenter.view
+                popover.sourceRect = CGRect(
+                    x: presenter.view.bounds.midX,
+                    y: presenter.view.bounds.midY,
+                    width: 1,
+                    height: 1
+                )
+            }
             popover.permittedArrowDirections = []
         }
 
-        var presenter = root
-        while let presented = presenter.presentedViewController {
-            presenter = presented
-        }
         presenter.present(activity, animated: true)
+        AppLogInfo("[LocalFiles] 分享 \(urls.count) 个文件")
+    }
+
+    @MainActor
+    private static func topViewController() -> UIViewController? {
+        let scenes = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+
+        let scene = scenes.first(where: { $0.activationState == .foregroundActive })
+            ?? scenes.first(where: { $0.windows.contains(where: \.isKeyWindow) })
+            ?? scenes.first
+
+        guard let scene else { return nil }
+
+        guard let window = scene.windows.first(where: \.isKeyWindow)
+            ?? scene.windows.first else { return nil }
+
+        var top = window.rootViewController
+        while let presented = top?.presentedViewController {
+            top = presented
+        }
+        return top
     }
 }

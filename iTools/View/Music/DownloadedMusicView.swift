@@ -6,8 +6,6 @@ struct DownloadedMusicView: View {
     @State private var files: [URL] = []
     @State private var totalSize: Int64 = 0
     @State private var selectedFile: URL?
-    @State private var shareURLs: [URL] = []
-    @State private var showShareSheet = false
     @State private var showClearConfirm = false
     @State private var pendingDelete: URL?
 
@@ -31,8 +29,7 @@ struct DownloadedMusicView: View {
                     }
 
                     Button {
-                        shareURLs = files
-                        showShareSheet = true
+                        LocalFiles.share(files)
                     } label: {
                         Label("分享全部", systemImage: "square.and.arrow.up")
                     }
@@ -53,10 +50,6 @@ struct DownloadedMusicView: View {
             }
         }
         .onAppear(perform: reload)
-        .sheet(isPresented: $showShareSheet) {
-            ShareSheet(items: shareURLs)
-                .presentationDetents([.medium, .large])
-        }
         .sheet(item: Binding(
             get: { selectedFile.map(FileInfo.init) },
             set: { selectedFile = $0?.url }
@@ -68,7 +61,6 @@ struct DownloadedMusicView: View {
                 }
             })
         }
-        // ★ 单一状态绑定的删除确认
         .alert(
             "删除文件？",
             isPresented: Binding(
@@ -181,7 +173,6 @@ struct DownloadedMusicView: View {
     }
 
     private func fileRow(url: URL) -> some View {
-        // ★ 使用 TrackMetaCache，一次读取而不是 3~4 次
         let track = TrackMetaCache.shared.track(for: url)
 
         return HStack(spacing: 12) {
@@ -213,8 +204,7 @@ struct DownloadedMusicView: View {
 
             Menu {
                 Button {
-                    shareURLs = [url]
-                    showShareSheet = true
+                    LocalFiles.share([url])
                 } label: {
                     Label("分享", systemImage: "square.and.arrow.up")
                 }
@@ -305,7 +295,6 @@ struct DownloadedMusicView: View {
     private func reload() {
         files = LocalFiles.listDownloadedMusic()
         totalSize = LocalFiles.totalMusicSize()
-        // 预热缓存
         for url in files {
             _ = TrackMetaCache.shared.track(for: url)
         }
@@ -485,7 +474,11 @@ private struct FileDetailSheet: View {
     private var actionBar: some View {
         HStack(spacing: 10) {
             Button {
-                LocalFiles.share([url])
+                let targets = [url]
+                dismiss()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    LocalFiles.share(targets)
+                }
             } label: {
                 Label("分享", systemImage: "square.and.arrow.up")
                     .font(.system(size: 14, weight: .semibold))
@@ -511,18 +504,6 @@ private struct FileDetailSheet: View {
         .padding(.top, 6)
         .padding(.bottom, 8)
     }
-}
-
-// MARK: - 分享 Sheet
-
-private struct ShareSheet: UIViewControllerRepresentable {
-    let items: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - 玻璃按钮样式
