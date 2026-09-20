@@ -4,7 +4,7 @@ import SwiftUI
 struct MainTabView: View {
     var body: some View {
         TabView {
-            MusicPlaceholderView()
+            MusicSearchView()
                 .tabItem { Label("音乐", systemImage: "music.note.list") }
 
             FilesPlaceholderView()
@@ -44,12 +44,6 @@ private struct PlaceholderScreen: View {
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
         }
-    }
-}
-
-private struct MusicPlaceholderView: View {
-    var body: some View {
-        PlaceholderScreen(title: "音乐", icon: "music.note.list", message: "音乐功能开发中")
     }
 }
 

@@ -68,7 +68,7 @@ struct SettingsView: View {
 
     private var developerCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SettingsCardHeader(icon: "hammer.fill", iconColor: .orange, title: "开发者")
+            SettingsCardHeader(icon: "hammer.fill", iconColor: .orange, title: "关于与开发者")
 
             Button { path.append(SettingsRoute.logs) } label: {
                 SettingsRow(title: "调试日志", subtitle: "查看应用运行日志", badge: nil)

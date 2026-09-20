@@ -6,13 +6,30 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		FA84DB0D305FB99400F3DB2C /* ID3TagEditor in Frameworks */ = {isa = PBXBuildFile; productRef = FA84DB0C305FB99400F3DB2C /* ID3TagEditor */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		FA95F8CA304E57A5008A2501 /* iTools.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = iTools.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		FA84DAFF305FAED400F3DB2C /* Exceptions for "iTools" folder in "iTools" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = FA95F8C9304E57A5008A2501 /* iTools */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		FA95F8CC304E57A5008A2501 /* iTools */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				FA84DAFF305FAED400F3DB2C /* Exceptions for "iTools" folder in "iTools" target */,
+			);
 			path = iTools;
 			sourceTree = "<group>";
 		};
@@ -23,6 +40,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FA84DB0D305FB99400F3DB2C /* ID3TagEditor in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +83,7 @@
 			);
 			name = iTools;
 			packageProductDependencies = (
+				FA84DB0C305FB99400F3DB2C /* ID3TagEditor */,
 			);
 			productName = iTools;
 			productReference = FA95F8CA304E57A5008A2501 /* iTools.app */;
@@ -78,7 +97,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2660;
-				LastUpgradeCheck = 2660;
+				LastUpgradeCheck = 2700;
 				TargetAttributes = {
 					FA95F8C9304E57A5008A2501 = {
 						CreatedOnToolsVersion = 26.6;
@@ -95,6 +114,7 @@
 			mainGroup = FA95F8C1304E57A5008A2501;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				FA84DB0B305FB99400F3DB2C /* XCRemoteSwiftPackageReference "ID3TagEditor" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = FA95F8CB304E57A5008A2501 /* Products */;
@@ -186,6 +206,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -243,6 +264,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};
@@ -258,6 +280,8 @@
 				DEVELOPMENT_TEAM = WTSH9JD2VD;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = iTools/Info.plist;
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -291,6 +315,8 @@
 				DEVELOPMENT_TEAM = WTSH9JD2VD;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = iTools/Info.plist;
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -336,6 +362,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		FA84DB0B305FB99400F3DB2C /* XCRemoteSwiftPackageReference "ID3TagEditor" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/chicio/ID3TagEditor.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.5.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		FA84DB0C305FB99400F3DB2C /* ID3TagEditor */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FA84DB0B305FB99400F3DB2C /* XCRemoteSwiftPackageReference "ID3TagEditor" */;
+			productName = ID3TagEditor;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = FA95F8C2304E57A5008A2501 /* Project object */;
 }

@@ -1,0 +1,273 @@
+// MusicAPIService.swift
+import Foundation
+
+// MARK: - 限流器（5 分钟 45 次，留 5 次余量）
+
+actor RateLimiter {
+    private let maxRequests: Int
+    private let window: TimeInterval
+    private var timestamps: [Date] = []
+
+    init(maxRequests: Int, window: TimeInterval) {
+        self.maxRequests = maxRequests
+        self.window = window
+    }
+
+    /// 若额度已满，挂起直到可以请求
+    func acquire() async {
+        while true {
+            let now = Date()
+            let cutoff = now.addingTimeInterval(-window)
+            timestamps.removeAll { $0 < cutoff }
+
+            if timestamps.count < maxRequests {
+                timestamps.append(now)
+                return
+            }
+
+            let oldest = timestamps.first ?? now
+            let wait = window - now.timeIntervalSince(oldest) + 0.2
+            AppLogWarn("[RateLimiter] 达到限流阈值，等待 \(String(format: "%.1f", wait)) 秒")
+            try? await Task.sleep(for: .seconds(max(0.5, wait)))
+        }
+    }
+}
+
+// MARK: - 音乐 API 服务
+
+final class MusicAPIService: @unchecked Sendable {
+    static let shared = MusicAPIService()
+
+    private let baseURL = "https://music-api.gdstudio.xyz/api.php"
+    private let rateLimiter = RateLimiter(maxRequests: 45, window: 300)
+
+    /// 元数据请求（搜索/URL/歌词）用的 session
+    private let metadataSession: URLSession
+
+    private init() {
+        let cfg = URLSessionConfiguration.default
+        cfg.timeoutIntervalForRequest  = 15
+        cfg.timeoutIntervalForResource = 60
+        cfg.waitsForConnectivity       = true
+        cfg.requestCachePolicy         = .reloadIgnoringLocalCacheData
+        metadataSession = URLSession(configuration: cfg)
+    }
+
+    // MARK: - 搜索
+
+    func search(
+        keyword: String,
+        source: MusicSource = .netease,
+        page: Int = 1,
+        count: Int = 20
+    ) async throws -> [MusicTrack] {
+        let trimmed = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        var comps = URLComponents(string: baseURL)!
+        comps.queryItems = [
+            .init(name: "types",  value: "search"),
+            .init(name: "source", value: source.rawValue),
+            .init(name: "name",   value: trimmed),
+            .init(name: "count",  value: "\(count)"),
+            .init(name: "pages",  value: "\(page)")
+        ]
+        guard let url = comps.url else { throw MusicAPIError.invalidURL }
+
+        await rateLimiter.acquire()
+
+        let (data, response) = try await metadataSession.data(from: url)
+        try validate(response: response)
+
+        do {
+            let items = try JSONDecoder().decode([MusicSearchItem].self, from: data)
+            return items.map {
+                MusicTrack(
+                    id: $0.id,
+                    name: $0.name,
+                    artist: $0.artistText,
+                    album: $0.album,
+                    picId: $0.picId,
+                    lyricId: $0.lyricId,
+                    source: source
+                )
+            }
+        } catch {
+            AppLogError("[MusicAPI] 搜索解码失败: \(error)")
+            throw MusicAPIError.decodingFailed(error.localizedDescription)
+        }
+    }
+
+    // MARK: - 获取歌曲播放地址
+
+    func fetchSongURL(
+        trackId: String,
+        source: MusicSource,
+        bitrate: Int = 320
+    ) async throws -> MusicURLResponse {
+        var comps = URLComponents(string: baseURL)!
+        comps.queryItems = [
+            .init(name: "types",  value: "url"),
+            .init(name: "source", value: source.rawValue),
+            .init(name: "id",     value: trackId),
+            .init(name: "br",     value: "\(bitrate)")
+        ]
+        guard let url = comps.url else { throw MusicAPIError.invalidURL }
+
+        await rateLimiter.acquire()
+
+        let (data, response) = try await metadataSession.data(from: url)
+        try validate(response: response)
+
+        do {
+            let obj = try JSONDecoder().decode(MusicURLResponse.self, from: data)
+            guard !obj.url.isEmpty else { throw MusicAPIError.noResult }
+            return obj
+        } catch let e as MusicAPIError {
+            throw e
+        } catch {
+            throw MusicAPIError.decodingFailed(error.localizedDescription)
+        }
+    }
+
+    // MARK: - 专辑图 URL（直接用于 AsyncImage）
+
+    func albumArtURL(
+        picId: String,
+        source: MusicSource,
+        size: Int = 300
+    ) -> URL? {
+        guard !picId.isEmpty else { return nil }
+        var comps = URLComponents(string: baseURL)!
+        comps.queryItems = [
+            .init(name: "types",  value: "pic"),
+            .init(name: "source", value: source.rawValue),
+            .init(name: "id",     value: picId),
+            .init(name: "size",   value: "\(size)")
+        ]
+        return comps.url
+    }
+
+    /// 请求 `types=pic` 元数据接口，拿到真正的图片 CDN 地址。
+    /// 注意：不能把 `albumArtURL` 的返回值直接给 AsyncImage，因为它返回的是 JSON。
+    func fetchAlbumArtURL(
+        picId: String,
+        source: MusicSource,
+        size: Int = 300
+    ) async throws -> URL {
+        guard !picId.isEmpty else { throw MusicAPIError.noResult }
+
+        var comps = URLComponents(string: baseURL)!
+        comps.queryItems = [
+            .init(name: "types",  value: "pic"),
+            .init(name: "source", value: source.rawValue),
+            .init(name: "id",     value: picId),
+            .init(name: "size",   value: "\(size)")
+        ]
+        guard let url = comps.url else { throw MusicAPIError.invalidURL }
+
+        await rateLimiter.acquire()
+
+        let (data, response) = try await metadataSession.data(from: url)
+        try validate(response: response)
+
+        struct PicResponse: Decodable { let url: String }
+        do {
+            let obj = try JSONDecoder().decode(PicResponse.self, from: data)
+            guard let real = URL(string: obj.url), !obj.url.isEmpty else {
+                throw MusicAPIError.noResult
+            }
+            return real
+        } catch let e as MusicAPIError {
+            throw e
+        } catch {
+            throw MusicAPIError.decodingFailed(error.localizedDescription)
+        }
+    }
+    
+    // MARK: - 歌词
+
+    func fetchLyric(
+        lyricId: String,
+        source: MusicSource
+    ) async throws -> MusicLyricResponse {
+        var comps = URLComponents(string: baseURL)!
+        comps.queryItems = [
+            .init(name: "types",  value: "lyric"),
+            .init(name: "source", value: source.rawValue),
+            .init(name: "id",     value: lyricId)
+        ]
+        guard let url = comps.url else { throw MusicAPIError.invalidURL }
+
+        await rateLimiter.acquire()
+
+        let (data, response) = try await metadataSession.data(from: url)
+        try validate(response: response)
+
+        do {
+            return try JSONDecoder().decode(MusicLyricResponse.self, from: data)
+        } catch {
+            throw MusicAPIError.decodingFailed(error.localizedDescription)
+        }
+    }
+
+    // MARK: - ★ 音频 CDN 请求头（新增）
+
+    /// 为音频 CDN 直链构造带防盗链头的请求。
+    /// 不同源的 CDN 对 `User-Agent` / `Referer` 的校验规则不同：
+    /// - 网易云：UA 必需，Referer 建议带
+    /// - B站：UA + Referer + Origin 都必须
+    /// - JOOX：UA 必需，Referer 建议带
+    func makeAudioRequest(for remoteURL: URL, source: MusicSource) -> URLRequest {
+        var request = URLRequest(url: remoteURL)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 60
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+
+        // 伪装成 iOS Safari —— 各 CDN 通用
+        request.setValue(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) "
+            + "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+            + "Version/18.0 Mobile/15E148 Safari/604.1",
+            forHTTPHeaderField: "User-Agent"
+        )
+        request.setValue("zh-CN,zh;q=0.9", forHTTPHeaderField: "Accept-Language")
+        request.setValue("*/*",            forHTTPHeaderField: "Accept")
+        // 明确用 close，避免长连接被 CDN 主动 RST
+        request.setValue("close",          forHTTPHeaderField: "Connection")
+
+        switch source {
+        case .netease:
+            request.setValue("https://music.163.com/", forHTTPHeaderField: "Referer")
+
+        case .bilibili:
+            request.setValue("https://www.bilibili.com/", forHTTPHeaderField: "Referer")
+            request.setValue("https://www.bilibili.com",  forHTTPHeaderField: "Origin")
+
+        case .joox:
+            request.setValue("https://www.joox.com/", forHTTPHeaderField: "Referer")
+
+        case .tencent:
+            request.setValue("https://y.qq.com/", forHTTPHeaderField: "Referer")
+
+        case .kuwo:
+            request.setValue("https://www.kuwo.cn/", forHTTPHeaderField: "Referer")
+
+        default:
+            break
+        }
+
+        return request
+    }
+
+    // MARK: - 私有
+
+    private func validate(response: URLResponse) throws {
+        guard let http = response as? HTTPURLResponse else {
+            throw MusicAPIError.invalidResponse
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw MusicAPIError.httpStatus(http.statusCode)
+        }
+    }
+}
