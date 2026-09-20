@@ -39,37 +39,20 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - 外观
+    // MARK: - 外观（恢复为分段选择器）
 
     private var appearanceCard: some View {
         VStack(alignment: .leading, spacing: 0) {
             SettingsCardHeader(icon: "paintpalette.fill", iconColor: .pink, title: "外观")
 
-            Menu {
-                Picker("主题", selection: $appColorScheme) {
-                    ForEach(AppColorScheme.allCases) { scheme in
-                        Label(scheme.displayName, systemImage: scheme.symbolName)
-                            .tag(scheme)
-                    }
+            Picker("主题", selection: $appColorScheme) {
+                ForEach(AppColorScheme.allCases) { scheme in
+                    Text(scheme.displayName).tag(scheme)
                 }
-            } label: {
-                HStack(spacing: 12) {
-                    Text("主题")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    Text(appColorScheme.displayName)
-                        .font(.system(size: 14))
-                        .foregroundStyle(.secondary)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary.opacity(0.5))
-                }
-                .padding(.horizontal, DSLayout.rowHorizontalPadding)
-                .padding(.vertical, DSLayout.rowVerticalPadding)
-                .contentShape(Rectangle())
             }
-            .tint(.primary)
+            .pickerStyle(.segmented)
+            .padding(.horizontal, DSLayout.rowHorizontalPadding)
+            .padding(.bottom, 12)
             .onChange(of: appColorScheme) { _, _ in
                 UISelectionFeedbackGenerator().selectionChanged()
             }
