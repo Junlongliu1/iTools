@@ -1,5 +1,4 @@
 // DesignSystem.swift
-// 共享的布局与行组件（如工程里已有同名定义请删掉本文件）
 import SwiftUI
 
 enum DSLayout {
@@ -10,6 +9,13 @@ enum DSLayout {
     static let rowVerticalPadding: CGFloat = 12
 }
 
+extension View {
+    /// 统一的玻璃卡片外观
+    /// 参数类型为 Glass（不是 GlassEffectStyle）
+    func cardGlass(_ glass: Glass = .regular) -> some View {
+        self.glassEffect(glass, in: .rect(cornerRadius: DSLayout.cardRadius))
+    }
+}
 struct SettingsCardHeader: View {
     let icon: String
     let iconColor: Color

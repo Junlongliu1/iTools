@@ -27,7 +27,6 @@ enum DownloadState: Equatable {
 final class MusicDownloadManager {
     static let shared = MusicDownloadManager()
 
-    /// 各曲目下载状态，key 为 MusicTrack.displayKey
     private(set) var states: [String: DownloadState] = [:]
 
     @ObservationIgnored private var tasks: [String: Task<Void, Never>] = [:]
@@ -53,7 +52,7 @@ final class MusicDownloadManager {
         return false
     }
 
-    // MARK: - 下载入口（带自动重试）
+    // MARK: - 下载入口
 
     func download(track: MusicTrack, quality: AudioQuality = .high) {
         let key = track.displayKey
@@ -109,7 +108,6 @@ final class MusicDownloadManager {
                         return
                     }
 
-                    // 指数退避：1.2s / 2.4s
                     let backoff = Double(attempt) * 1.2
                     AppLogInfo("[MusicDownload] \(String(format: "%.1f", backoff))s 后重试"
                                + "（尝试 \(attempt + 1)/\(maxAttempts)）")
@@ -150,9 +148,10 @@ final class MusicDownloadManager {
             source: track.source
         )
 
-        // 3. 流式下载到临时文件（内存占用常数级）
+        // 3. 流式下载到临时文件
         let tempURL = try await AudioDownloadSession.shared.download(
-            request: request
+            request: request,
+            key: key
         ) { [weak self] progress in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -174,18 +173,17 @@ final class MusicDownloadManager {
         }
         try FileManager.default.moveItem(at: tempURL, to: dest)
 
-        // 5. 获取封面数据（一次下载，三处复用）
+        // 5. 封面（尺寸与搜索页保持一致 → 复用缓存）
         var coverData: Data?
         if !track.picId.isEmpty {
             do {
                 let realURL = try await AlbumArtURLCache.shared.url(
                     picId: track.picId,
                     source: track.source,
-                    size: 500
+                    size: 300
                 )
                 let (data, _) = try await URLSession.shared.data(from: realURL)
                 coverData = data
-                // 保存 sidecar（作为 App 内快速读取的备份）
                 LocalFiles.saveCover(data, for: dest)
                 AppLogInfo("[MusicDownload] 封面已下载 (\(data.count) bytes)")
             } catch {
@@ -193,9 +191,9 @@ final class MusicDownloadManager {
             }
         }
 
-        // 6. 获取歌词数据
+        // 6. 歌词
         var lyricText: String?
-        var lyricLang: ID3FrameContentLanguage = .chi  // 默认中文
+        var lyricLang: ID3FrameContentLanguage = .chi
         if !track.lyricId.isEmpty {
             do {
                 let lyricResp = try await MusicAPIService.shared.fetchLyric(
@@ -203,13 +201,10 @@ final class MusicDownloadManager {
                     source: track.source
                 )
 
-                // ★ tlyric 是可选 String，可以 if let
                 if let t = lyricResp.tlyric, !t.isEmpty {
                     lyricText = t
                     lyricLang = .chi
-                }
-                // ★ lyric 是非可选 String，直接用 isEmpty 判断
-                else if !lyricResp.lyric.isEmpty {
+                } else if !lyricResp.lyric.isEmpty {
                     lyricText = lyricResp.lyric
                     lyricLang = lyricResp.lyric.containsCJK ? .chi : .eng
                 }
@@ -222,7 +217,7 @@ final class MusicDownloadManager {
             }
         }
 
-        // 7. 写入 ID3 标签（核心步骤）
+        // 7. ID3 标签
         do {
             try writeID3Tags(
                 to: dest,
@@ -236,7 +231,7 @@ final class MusicDownloadManager {
             AppLogError("[MusicDownload] ID3 标签写入失败：\(error.localizedDescription)")
         }
 
-        // 8. 保存元数据 sidecar（作为备份，App 内读取更快）
+        // 8. 元数据 sidecar（会自动 invalidate TrackMetaCache）
         LocalFiles.saveTrack(track, for: dest)
 
         // 9. 成功
@@ -255,7 +250,7 @@ final class MusicDownloadManager {
                    + "(\(sizeBytes) bytes, 第 \(attempt) 次尝试)")
     }
 
-    // MARK: - ★ ID3 标签写入
+    // MARK: - ID3 标签写入
 
     private func writeID3Tags(
         to mp3URL: URL,
@@ -264,10 +259,8 @@ final class MusicDownloadManager {
         lyricText: String?,
         lyricLanguage: ID3FrameContentLanguage
     ) throws {
-        // 用 ID32v3TagBuilder 构建标签（ID3Tag 的 init 是 internal，不能直接调用）
         let builder = ID32v3TagBuilder()
 
-        // ---- 基本信息（链式调用，一次性消费返回值）----
         _ = builder
             .title(frame: ID3FrameWithStringContent(content: track.name))
             .artist(frame: ID3FrameWithStringContent(content: track.artist))
@@ -276,7 +269,6 @@ final class MusicDownloadManager {
             _ = builder.album(frame: ID3FrameWithStringContent(content: track.album))
         }
 
-        // ---- 封面（APIC 帧）----
         if let coverData, !coverData.isEmpty {
             let picture = ID3FrameAttachedPicture(
                 picture: coverData,
@@ -286,10 +278,6 @@ final class MusicDownloadManager {
             _ = builder.attachedPicture(pictureType: .frontCover, frame: picture)
         }
 
-        // ---- 歌词（USLT 帧）----
-        // ID3FrameContentLanguage 遵循 ISO-639-2：
-        //   英语 → .eng   中文（书目）→ .chi   中文（术语）→ .zho
-        //   日语 → .jpn   韩语 → .kor
         if let lyricText, !lyricText.isEmpty {
             let lyricsFrame = ID3FrameWithLocalizedContent(
                 language: lyricLanguage,
@@ -302,7 +290,6 @@ final class MusicDownloadManager {
             )
         }
 
-        // ---- 构建并写入 ----
         let id3Tag = builder.build()
         let editor = ID3TagEditor()
         try editor.write(tag: id3Tag, to: mp3URL.path)
@@ -324,7 +311,6 @@ final class MusicDownloadManager {
         let key = track.displayKey
         if case .completed(let fileName) = state(for: track) {
             let url = musicDirectory.appendingPathComponent(fileName)
-            // LocalFiles.delete 会一并清理 .json 和 .jpg sidecar
             LocalFiles.delete(url)
         }
         states[key] = .idle
@@ -363,18 +349,17 @@ final class MusicDownloadManager {
 // MARK: - 可重试网络错误
 
 private extension NSError {
-    /// 是否属于「CDN 主动断连 / 链接失效」类可重试错误
     var isRetryableNetworkError: Bool {
         guard domain == NSURLErrorDomain else { return false }
         switch code {
-        case NSURLErrorNetworkConnectionLost,     // -1005
-             NSURLErrorTimedOut,                  // -1001
-             NSURLErrorCannotConnectToHost,       // -1004
-             NSURLErrorNotConnectedToInternet,    // -1009
-             NSURLErrorBadServerResponse,         // -1011
-             NSURLErrorHTTPTooManyRedirects,      // -1007
-             -1100,                               // 链接失效
-             -11800:                              // AVFoundation 未知
+        case NSURLErrorNetworkConnectionLost,
+             NSURLErrorTimedOut,
+             NSURLErrorCannotConnectToHost,
+             NSURLErrorNotConnectedToInternet,
+             NSURLErrorBadServerResponse,
+             NSURLErrorHTTPTooManyRedirects,
+             -1100,
+             -11800:
             return true
         default:
             return false
@@ -385,14 +370,13 @@ private extension NSError {
 // MARK: - String 辅助
 
 extension String {
-    /// 是否包含 CJK 字符（中日韩）
     var containsCJK: Bool {
         unicodeScalars.contains { scalar in
-            (0x4E00...0x9FFF).contains(scalar.value) ||   // CJK 统一表意文字
-            (0x3400...0x4DBF).contains(scalar.value) ||   // CJK 扩展 A
-            (0x3040...0x309F).contains(scalar.value) ||   // 日文平假名
-            (0x30A0...0x30FF).contains(scalar.value) ||   // 日文片假名
-            (0xAC00...0xD7AF).contains(scalar.value)      // 韩文音节
+            (0x4E00...0x9FFF).contains(scalar.value) ||
+            (0x3400...0x4DBF).contains(scalar.value) ||
+            (0x3040...0x309F).contains(scalar.value) ||
+            (0x30A0...0x30FF).contains(scalar.value) ||
+            (0xAC00...0xD7AF).contains(scalar.value)
         }
     }
 }
@@ -403,10 +387,7 @@ private final class AudioDownloadSession: NSObject, URLSessionDownloadDelegate, 
 
     static let shared = AudioDownloadSession()
 
-    // ★ 可变存储属性用 nonisolated(unsafe)，配合 NSLock 保护
     nonisolated(unsafe) private var observers: [Int: DownloadObserver] = [:]
-
-    // ★ 不可变属性（let）不需要特殊标记
     private let lock = NSLock()
 
     private lazy var session: URLSession = {
@@ -426,10 +407,12 @@ private final class AudioDownloadSession: NSObject, URLSessionDownloadDelegate, 
 
     nonisolated func download(
         request: URLRequest,
+        key: String,
         onProgress: @escaping @Sendable (Double) -> Void
     ) async throws -> URL {
         try await withCheckedThrowingContinuation { continuation in
             let observer = DownloadObserver(
+                key: key,
                 continuation: continuation,
                 onProgress: onProgress
             )
@@ -443,13 +426,12 @@ private final class AudioDownloadSession: NSObject, URLSessionDownloadDelegate, 
         }
     }
 
+    /// ★ 只取消指定 key 对应的任务，不影响其他下载
     nonisolated func cancelAll(forKey key: String) {
         lock.lock()
-        let all = observers
+        let victims = observers.values.filter { $0.key == key }
         lock.unlock()
-        for (_, observer) in all {
-            observer.cancel()
-        }
+        for observer in victims { observer.cancel() }
     }
 
     // MARK: URLSessionDownloadDelegate
@@ -520,17 +502,17 @@ private final class AudioDownloadSession: NSObject, URLSessionDownloadDelegate, 
 
 private final class DownloadObserver: @unchecked Sendable {
 
-    // 不可变属性，无需特殊标记
+    let key: String
     private let onProgress: @Sendable (Double) -> Void
     private let lock = NSLock()
-
-    // ★ 可变存储属性用 nonisolated(unsafe)
     nonisolated(unsafe) private var continuation: CheckedContinuation<URL, Error>?
 
     nonisolated init(
+        key: String,
         continuation: CheckedContinuation<URL, Error>,
         onProgress: @escaping @Sendable (Double) -> Void
     ) {
+        self.key = key
         self.continuation = continuation
         self.onProgress = onProgress
     }

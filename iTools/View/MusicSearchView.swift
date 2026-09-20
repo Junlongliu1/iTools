@@ -1,20 +1,23 @@
 // MusicSearchView.swift
 import SwiftUI
 
-// MARK: - ★ 搜索状态模型（主视图与搜索面板共享）
+// MARK: - 搜索状态模型
 
 @MainActor
 @Observable
 final class MusicSearchModel {
-    /// 每页加载数量
     private let pageSize = 5
 
-    // 输入
     var searchText: String = ""
-    var selectedSource: MusicSource = .netease
     var selectedQuality: AudioQuality = .high
 
-    // 结果与分页
+    var selectedSource: MusicSource = .netease {
+        didSet {
+            guard oldValue != selectedSource else { return }
+            resetForSourceChange()
+        }
+    }
+
     var tracks: [MusicTrack] = []
     var currentPage: Int = 1
     var isSearching = false
@@ -23,7 +26,6 @@ final class MusicSearchModel {
     var errorMessage: String?
     var didSearch = false
 
-    /// 首次搜索：重置到第 1 页
     func search() async {
         let keyword = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !keyword.isEmpty else { return }
@@ -53,7 +55,6 @@ final class MusicSearchModel {
         isSearching = false
     }
 
-    /// 翻页：请求下一页并追加
     func loadMore() async {
         guard !isLoadingMore, hasMore else { return }
 
@@ -91,7 +92,6 @@ final class MusicSearchModel {
         isLoadingMore = false
     }
 
-    /// 换源时清空旧结果
     func resetForSourceChange() {
         tracks = []
         currentPage = 1
@@ -121,29 +121,25 @@ struct MusicSearchView: View {
             .scrollEdgeEffectStyle(.soft, for: .all)
             .background(Color(.systemGroupedBackground))
             .navigationTitle("音乐")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 14) {
-                        Button {
-                            showSearchSheet = true
-                        } label: {
-                            Image(systemName: "magnifyingglass")
-                                .font(.system(size: 15, weight: .medium))
-                        }
-                        .accessibilityLabel("搜索")
-
-                        NavigationLink {
-                            DownloadedMusicView()
-                        } label: {
-                            Image(systemName: "internaldrive")
-                                .font(.system(size: 15, weight: .medium))
-                        }
-                        .accessibilityLabel("已下载")
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        showSearchSheet = true
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 15, weight: .medium))
                     }
+                    .accessibilityLabel("搜索")
+
+                    NavigationLink {
+                        DownloadedMusicView()
+                    } label: {
+                        Image(systemName: "internaldrive")
+                            .font(.system(size: 15, weight: .medium))
+                    }
+                    .accessibilityLabel("已下载")
                 }
             }
-            // ★ 搜索面板（音乐源 + 音质 + 历史 + 结果）
             .sheet(isPresented: $showSearchSheet) {
                 SearchSheet(model: model)
                     .presentationDetents([.large])
@@ -186,9 +182,7 @@ struct MusicSearchView: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 22)
                 .padding(.vertical, 10)
-                .background(
-                    Capsule().fill(Color.accentColor)
-                )
+                .background(Capsule().fill(Color.accentColor))
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -196,7 +190,7 @@ struct MusicSearchView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 42)
-        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
+        .cardGlass()
     }
 
     // MARK: - 页脚署名
@@ -217,7 +211,7 @@ struct MusicSearchView: View {
     }
 }
 
-// MARK: - ★ 搜索面板
+// MARK: - 搜索面板
 
 private struct SearchSheet: View {
     @Bindable var model: MusicSearchModel
@@ -231,10 +225,12 @@ private struct SearchSheet: View {
                 searchBar
 
                 ScrollView {
-                    LazyVStack(spacing: DSLayout.cardSpacing) {
-                        optionsCard
-                        resultArea
-                        historySection
+                    GlassEffectContainer(spacing: DSLayout.cardSpacing) {
+                        LazyVStack(spacing: DSLayout.cardSpacing) {
+                            optionsCard
+                            resultArea
+                            historySection
+                        }
                     }
                     .padding(.horizontal, DSLayout.horizontalPadding)
                     .padding(.top, 4)
@@ -244,7 +240,6 @@ private struct SearchSheet: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("搜索音乐")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("完成") { dismiss() }
@@ -257,10 +252,6 @@ private struct SearchSheet: View {
                 try? await Task.sleep(for: .milliseconds(300))
                 isFocused = true
             }
-        }
-        // ★ 换源自动清空旧结果
-        .onChange(of: model.selectedSource) { _, _ in
-            model.resetForSourceChange()
         }
     }
 
@@ -339,7 +330,7 @@ private struct SearchSheet: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
+        .cardGlass()
     }
 
     private func sourceChip(_ source: MusicSource) -> some View {
@@ -347,7 +338,7 @@ private struct SearchSheet: View {
         return Button {
             guard source != model.selectedSource else { return }
             withAnimation(.easeOut(duration: 0.15)) {
-                model.selectedSource = source
+                model.selectedSource = source   // didSet 自动 resetForSourceChange()
             }
             UISelectionFeedbackGenerator().selectionChanged()
         } label: {
@@ -426,7 +417,7 @@ private struct SearchSheet: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
-        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
+        .cardGlass()
     }
 
     private func errorCard(_ message: String) -> some View {
@@ -447,7 +438,7 @@ private struct SearchSheet: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 34)
-        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
+        .cardGlass()
     }
 
     private var emptyResultCard: some View {
@@ -464,7 +455,7 @@ private struct SearchSheet: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
-        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
+        .cardGlass()
     }
 
     private var resultCard: some View {
@@ -487,7 +478,7 @@ private struct SearchSheet: View {
             .padding(.bottom, 6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
+        .cardGlass()
     }
 
     @ViewBuilder
@@ -501,7 +492,7 @@ private struct SearchSheet: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
-            .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
+            .cardGlass()
 
         } else if model.hasMore {
             Button {
@@ -574,7 +565,7 @@ private struct SearchSheet: View {
             .padding(.bottom, 6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
+        .cardGlass()
     }
 
     private func historyRow(_ keyword: String) -> some View {
@@ -629,7 +620,7 @@ private struct SearchSheet: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 26)
-        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
+        .cardGlass()
     }
 
     // MARK: - 提交
@@ -676,8 +667,6 @@ private struct MusicTrackRow: View {
         .padding(.vertical, 10)
     }
 
-    // MARK: 封面
-
     private var albumArt: some View {
         CoverImage(
             picId: track.picId,
@@ -707,8 +696,6 @@ private struct MusicTrackRow: View {
                 .foregroundStyle(.white)
         }
     }
-
-    // MARK: 文本
 
     private var trackInfo: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -741,8 +728,6 @@ private struct MusicTrackRow: View {
             }
         }
     }
-
-    // MARK: 操作按钮
 
     @ViewBuilder
     private var actionButton: some View {

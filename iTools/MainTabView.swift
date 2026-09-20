@@ -1,24 +1,32 @@
 // MainTabView.swift
 import SwiftUI
 
+enum AppTab: Hashable {
+    case music, files, reminders, alarm, settings
+}
+
 struct MainTabView: View {
+    @State private var selection: AppTab = .music
+
     var body: some View {
-        TabView {
-            MusicSearchView()
-                .tabItem { Label("音乐", systemImage: "music.note.list") }
-
-            FilesPlaceholderView()
-                .tabItem { Label("文件", systemImage: "folder.fill") }
-
-            RemindersPlaceholderView()
-                .tabItem { Label("提醒", systemImage: "checklist") }
-
-            AlarmPlaceholderView()
-                .tabItem { Label("闹钟", systemImage: "alarm.fill") }
-
-            SettingsView()
-                .tabItem { Label("设置", systemImage: "gearshape.fill") }
+        TabView(selection: $selection) {
+            Tab("音乐", systemImage: "music.note.list", value: AppTab.music) {
+                MusicSearchView()
+            }
+            Tab("文件", systemImage: "folder.fill", value: AppTab.files) {
+                FilesPlaceholderView()
+            }
+            Tab("提醒", systemImage: "checklist", value: AppTab.reminders) {
+                RemindersPlaceholderView()
+            }
+            Tab("闹钟", systemImage: "alarm.fill", value: AppTab.alarm) {
+                AlarmPlaceholderView()
+            }
+            Tab("设置", systemImage: "gearshape.fill", value: AppTab.settings) {
+                SettingsView()
+            }
         }
+        .tabBarMinimizeBehavior(.onScrollDown)
     }
 }
 
@@ -42,7 +50,6 @@ private struct PlaceholderScreen: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(.systemGroupedBackground))
             .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
         }
     }
 }

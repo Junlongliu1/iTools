@@ -1,29 +1,15 @@
 // AboutView.swift
-//
-//  AboutView.swift
-//  iTools
-//
-//  关于页 —— iOS 26 液态玻璃风格
-//
-
 import SwiftUI
+import UIKit
 
 struct AboutView: View {
     // MARK: - 版本信息
     private var appVersion: String {
-        guard let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String else {
-            AppLogWarn("[About] CFBundleShortVersionString 缺失，使用默认值 1.0")
-            return "1.0"
-        }
-        return v
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
     }
 
     private var buildNumber: String {
-        guard let v = Bundle.main.infoDictionary?["CFBundleVersion"] as? String else {
-            AppLogWarn("[About] CFBundleVersion 缺失，使用默认值 1")
-            return "1"
-        }
-        return v
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
     }
 
     private var copyright: String {
@@ -31,47 +17,71 @@ struct AboutView: View {
         return "© \(year) iTools Team"
     }
 
+    /// 尝试读取真实的 AppIcon
+    private var appIconImage: UIImage? {
+        if let icon = UIImage(named: "AppIcon") { return icon }
+        if let icons = Bundle.main.infoDictionary?["CFBundleIcons"] as? [String: Any],
+           let primary = icons["CFBundlePrimaryIcon"] as? [String: Any],
+           let files = primary["CFBundleIconFiles"] as? [String],
+           let name = files.last {
+            return UIImage(named: name)
+        }
+        return nil
+    }
+
     // MARK: - Body
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: DSLayout.cardSpacing) {
-                heroCard
-                introCard
-                infoCard
-                copyrightNote
+            GlassEffectContainer(spacing: DSLayout.cardSpacing) {
+                LazyVStack(spacing: DSLayout.cardSpacing) {
+                    heroCard
+                    introCard
+                    infoCard
+                }
             }
             .padding(.horizontal, DSLayout.horizontalPadding)
             .padding(.top, 8)
             .padding(.bottom, 24)
+
+            copyrightNote
+                .padding(.bottom, 24)
         }
         .scrollEdgeEffectStyle(.soft, for: .all)
         .background(Color(.systemGroupedBackground))
         .navigationTitle("关于")
-        .navigationBarTitleDisplayMode(.inline)
     }
 
     // MARK: - Hero
 
     private var heroCard: some View {
         VStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.22, green: 0.49, blue: 0.95),
-                            Color(red: 0.35, green: 0.28, blue: 0.88)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: 84, height: 84)
-                .overlay(
-                    Image(systemName: "wrench.and.screwdriver.fill")
-                        .font(.system(size: 38))
-                        .foregroundColor(.white)
-                )
-                .shadow(color: .black.opacity(0.18), radius: 10, y: 5)
+            Group {
+                if let icon = appIconImage {
+                    Image(uiImage: icon)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.22, green: 0.49, blue: 0.95),
+                                    Color(red: 0.35, green: 0.28, blue: 0.88)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .overlay(
+                            Image(systemName: "wrench.and.screwdriver.fill")
+                                .font(.system(size: 38))
+                                .foregroundColor(.white)
+                        )
+                }
+            }
+            .frame(width: 84, height: 84)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .shadow(color: .black.opacity(0.18), radius: 10, y: 5)
 
             VStack(spacing: 4) {
                 Text("iTools")
@@ -84,7 +94,7 @@ struct AboutView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 26)
-        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
+        .cardGlass()
     }
 
     // MARK: - 简介
@@ -101,7 +111,7 @@ struct AboutView: View {
                 .padding(.bottom, 16)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
+        .cardGlass()
     }
 
     // MARK: - 信息
@@ -119,7 +129,7 @@ struct AboutView: View {
             InfoRow(label: "开发者", value: "iTools Team")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
+        .cardGlass()
     }
 
     private var divider: some View {

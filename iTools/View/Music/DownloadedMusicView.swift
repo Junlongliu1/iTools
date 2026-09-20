@@ -10,7 +10,6 @@ struct DownloadedMusicView: View {
     @State private var showShareSheet = false
     @State private var showClearConfirm = false
     @State private var pendingDelete: URL?
-    @State private var showDeleteConfirm = false
 
     var body: some View {
         Group {
@@ -22,7 +21,6 @@ struct DownloadedMusicView: View {
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle("已下载")
-        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -70,7 +68,15 @@ struct DownloadedMusicView: View {
                 }
             })
         }
-        .alert("删除文件？", isPresented: $showDeleteConfirm, presenting: pendingDelete) { url in
+        // ★ 单一状态绑定的删除确认
+        .alert(
+            "删除文件？",
+            isPresented: Binding(
+                get: { pendingDelete != nil },
+                set: { if !$0 { pendingDelete = nil } }
+            ),
+            presenting: pendingDelete
+        ) { url in
             Button("删除", role: .destructive) { performDelete(url) }
             Button("取消", role: .cancel) { pendingDelete = nil }
         } message: { url in
@@ -109,9 +115,11 @@ struct DownloadedMusicView: View {
 
     private var contentList: some View {
         ScrollView {
-            LazyVStack(spacing: DSLayout.cardSpacing) {
-                storageCard
-                fileListCard
+            GlassEffectContainer(spacing: DSLayout.cardSpacing) {
+                LazyVStack(spacing: DSLayout.cardSpacing) {
+                    storageCard
+                    fileListCard
+                }
             }
             .padding(.horizontal, DSLayout.horizontalPadding)
             .padding(.top, 8)
@@ -147,7 +155,7 @@ struct DownloadedMusicView: View {
             .padding(.bottom, 16)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
+        .cardGlass()
     }
 
     // MARK: 文件列表
@@ -169,25 +177,29 @@ struct DownloadedMusicView: View {
             .padding(.bottom, 6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
+        .cardGlass()
     }
 
     private func fileRow(url: URL) -> some View {
-        HStack(spacing: 12) {
+        // ★ 使用 TrackMetaCache，一次读取而不是 3~4 次
+        let track = TrackMetaCache.shared.track(for: url)
+
+        return HStack(spacing: 12) {
             Button {
                 selectedFile = url
             } label: {
                 HStack(spacing: 12) {
-                    // ★ 封面缩略图替换原来的 icon
-                    coverThumbnail(for: url)
+                    coverThumbnail(for: url, track: track)
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(displayTitle(url))
+                        Text(track?.name.isEmpty == false
+                             ? track!.name
+                             : url.deletingPathExtension().lastPathComponent)
                             .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
 
-                        Text(subtitle(url))
+                        Text(subtitle(url, track: track))
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -199,7 +211,6 @@ struct DownloadedMusicView: View {
             }
             .buttonStyle(GlassRowButtonStyle())
 
-            // 快速操作菜单
             Menu {
                 Button {
                     shareURLs = [url]
@@ -219,7 +230,6 @@ struct DownloadedMusicView: View {
 
                 Button(role: .destructive) {
                     pendingDelete = url
-                    showDeleteConfirm = true
                 } label: {
                     Label("删除", systemImage: "trash")
                 }
@@ -238,12 +248,10 @@ struct DownloadedMusicView: View {
         .padding(.vertical, 4)
     }
 
-    // MARK: - ★ 封面缩略图
+    // MARK: - 封面缩略图
 
     @ViewBuilder
-    private func coverThumbnail(for url: URL) -> some View {
-        let track = LocalFiles.loadTrack(for: url)
-
+    private func coverThumbnail(for url: URL, track: MusicTrack?) -> some View {
         CoverImage(
             picId: track?.picId ?? "",
             source: track?.source ?? .netease,
@@ -276,19 +284,17 @@ struct DownloadedMusicView: View {
 
     // MARK: - 辅助
 
-    /// 优先从元数据读歌名，回退到文件名
     private func displayTitle(_ url: URL) -> String {
-        if let track = LocalFiles.loadTrack(for: url), !track.name.isEmpty {
+        if let track = TrackMetaCache.shared.track(for: url), !track.name.isEmpty {
             return track.name
         }
         return url.deletingPathExtension().lastPathComponent
     }
 
-    /// 有元数据时显示「歌手 · 大小」，否则「大小 · 日期」
-    private func subtitle(_ url: URL) -> String {
+    private func subtitle(_ url: URL, track: MusicTrack?) -> String {
         let size = LocalFiles.formattedSize(LocalFiles.fileSize(url))
 
-        if let track = LocalFiles.loadTrack(for: url), !track.artist.isEmpty {
+        if let track, !track.artist.isEmpty {
             return "\(track.artist) · \(size)"
         }
         return "\(size) · \(LocalFiles.formattedDate(url))"
@@ -299,6 +305,10 @@ struct DownloadedMusicView: View {
     private func reload() {
         files = LocalFiles.listDownloadedMusic()
         totalSize = LocalFiles.totalMusicSize()
+        // 预热缓存
+        for url in files {
+            _ = TrackMetaCache.shared.track(for: url)
+        }
         AppLogInfo("[Downloaded] 加载 \(files.count) 个文件，共 \(LocalFiles.formattedSize(totalSize))")
     }
 
@@ -338,7 +348,7 @@ private struct FileDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showDeleteConfirm = false
 
-    private var track: MusicTrack? { LocalFiles.loadTrack(for: url) }
+    private var track: MusicTrack? { TrackMetaCache.shared.track(for: url) }
 
     var body: some View {
         NavigationStack {
@@ -354,7 +364,6 @@ private struct FileDetailSheet: View {
             .scrollEdgeEffectStyle(.soft, for: .all)
             .background(Color(.systemGroupedBackground))
             .navigationTitle("文件信息")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("完成") { dismiss() }
@@ -375,15 +384,13 @@ private struct FileDetailSheet: View {
         }
     }
 
-    // MARK: - Hero（大封面）
-
     private var hero: some View {
         VStack(spacing: 12) {
             CoverImage(
                 picId: track?.picId ?? "",
                 source: track?.source ?? .netease,
                 localFile: LocalFiles.coverURL(for: url),
-                size: 500
+                size: 300
             ) {
                 bigFallback
             }
@@ -427,13 +434,10 @@ private struct FileDetailSheet: View {
         }
     }
 
-    // MARK: - 详细信息
-
     private var infoCard: some View {
         VStack(alignment: .leading, spacing: 0) {
             SettingsCardHeader(icon: "doc.text", iconColor: .blue, title: "详细信息")
 
-            // 有元数据时优先展示歌曲元信息
             if let track {
                 infoRow(label: "歌曲", value: track.name)
                 SettingsRowDivider()
@@ -458,7 +462,7 @@ private struct FileDetailSheet: View {
             infoRow(label: "位置",   value: "Documents/Music/", monospaced: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
+        .cardGlass()
     }
 
     private func infoRow(label: String, value: String, monospaced: Bool = false) -> some View {
@@ -477,8 +481,6 @@ private struct FileDetailSheet: View {
         .padding(.horizontal, DSLayout.rowHorizontalPadding)
         .padding(.vertical, DSLayout.rowVerticalPadding)
     }
-
-    // MARK: - 底部操作
 
     private var actionBar: some View {
         HStack(spacing: 10) {

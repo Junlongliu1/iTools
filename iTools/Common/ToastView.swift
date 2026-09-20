@@ -46,7 +46,6 @@ final class ToastCenter {
 
     private init() {}
 
-    /// 显示一条 Toast，默认 1.8 秒后自动消失
     func show(
         _ message: String,
         icon: String? = "checkmark.circle.fill",
@@ -81,7 +80,6 @@ final class ToastCenter {
 // MARK: - 便捷修饰符
 
 extension View {
-    /// 挂在根视图上，自动渲染 ToastCenter 的消息
     func toastOverlay() -> some View {
         modifier(ToastOverlayModifier())
     }
@@ -91,15 +89,17 @@ private struct ToastOverlayModifier: ViewModifier {
     @Bindable private var center = ToastCenter.shared
 
     func body(content: Content) -> some View {
-        content.overlay(alignment: .top) {
-            if let message = center.message {
-                ToastView(message: message, icon: center.icon, tint: center.tint)
-                    .padding(.top, 8)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .allowsHitTesting(false)
-                    .zIndex(999)
+        content
+            .overlay(alignment: .top) {
+                if let message = center.message {
+                    ToastView(message: message, icon: center.icon, tint: center.tint)
+                        .padding(.top, 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .allowsHitTesting(false)
+                        .zIndex(999)
+                }
             }
-        }
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: center.message)
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: center.message)
+            .sensoryFeedback(.success, trigger: center.message)
     }
 }

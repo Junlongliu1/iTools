@@ -2,22 +2,18 @@
 import Foundation
 
 /// 封面请求协调器：
-/// - 全局串行限流（默认 800ms 间隔），避免 5 张封面并发触发 503
-/// - 失败负缓存 5 分钟，避免反复重试同一失效 picId
+/// - 全局串行限流（1.2s 间隔），避免 5 张封面并发触发 503
+/// - 失败负缓存 5 分钟
 actor CoverRequestCoordinator {
     static let shared = CoverRequestCoordinator()
 
-    /// 两次 pic 请求之间至少间隔（秒）
-    private let minInterval: TimeInterval = 0.8
-
-    /// 失败负缓存有效期（秒）
+    /// ★ 与 API 层 coverRateLimiter 叠加，这里再加一层串行间隔
+    private let minInterval: TimeInterval = 1.2
     private let negativeCacheTTL: TimeInterval = 300
 
-    /// ★ 原子预约：每个调用者拿独占时间槽，strictly serial
     private var nextSlotTime: Date = .distantPast
     private var negativeCache: [String: Date] = [:]
 
-    /// 原子地预约一个时间槽，然后 sleep 到该时间点
     func waitForSlot() async {
         let now = Date()
         let scheduled = max(now, nextSlotTime)

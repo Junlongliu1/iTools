@@ -40,12 +40,11 @@ enum MusicSource: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    /// 稳定源优先排序
+    /// 稳定源优先排序（顺序确定）
     static var ordered: [MusicSource] {
-        allCases.sorted { a, b in
-            if a.isStable != b.isStable { return a.isStable }
-            return false
-        }
+        let stable = allCases.filter(\.isStable)
+        let others = allCases.filter { !$0.isStable }
+        return stable + others
     }
 
     static var stable: [MusicSource] { allCases.filter(\.isStable) }
@@ -102,14 +101,13 @@ struct MusicSearchItem: Decodable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        id     = (try? c.decode(String.self, forKey: .id)) ?? ""
-        name   = (try? c.decode(String.self, forKey: .name)) ?? "未知曲目"
-        album  = (try? c.decode(String.self, forKey: .album)) ?? ""
-        picId  = (try? c.decode(String.self, forKey: .picId)) ?? ""
+        id      = (try? c.decode(String.self, forKey: .id)) ?? ""
+        name    = (try? c.decode(String.self, forKey: .name)) ?? "未知曲目"
+        album   = (try? c.decode(String.self, forKey: .album)) ?? ""
+        picId   = (try? c.decode(String.self, forKey: .picId)) ?? ""
         lyricId = (try? c.decode(String.self, forKey: .lyricId)) ?? ""
-        source = (try? c.decode(String.self, forKey: .source)) ?? ""
+        source  = (try? c.decode(String.self, forKey: .source)) ?? ""
 
-        // artist 在不同源下可能返回数组或字符串
         if let arr = try? c.decode([String].self, forKey: .artist) {
             artist = arr
         } else if let single = try? c.decode(String.self, forKey: .artist) {
@@ -129,7 +127,7 @@ struct MusicSearchItem: Decodable {
 struct MusicURLResponse: Decodable {
     let url: String
     let br: Int?
-    let size: Int?   // KB
+    let size: Int?
 }
 
 // MARK: - 歌词响应
@@ -154,7 +152,6 @@ struct MusicTrack: Identifiable, Equatable, Hashable, Codable {
 
 // MARK: - 错误
 
-// MusicModels.swift
 enum MusicAPIError: LocalizedError {
     case invalidURL
     case invalidResponse
@@ -177,7 +174,6 @@ enum MusicAPIError: LocalizedError {
         }
     }
 
-    /// ★ 把 HTTP 状态码翻译成人话
     private static func friendlyMessage(for code: Int) -> String {
         switch code {
         case 400:  return "请求参数错误"

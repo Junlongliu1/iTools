@@ -23,7 +23,6 @@ actor AlbumArtURLCache {
                 throw MusicAPIError.httpStatus(503)
             }
 
-            // 3 次尝试，每次之间都走串行限流
             var lastError: Error?
             for attempt in 1...3 {
                 await coordinator.waitForSlot()
@@ -114,13 +113,11 @@ struct CoverImage<Placeholder: View>: View {
     }
 
     private func load() async {
-        // 1. 本地 sidecar
         if let localFile, let img = UIImage(contentsOfFile: localFile.path) {
             self.image = img
             return
         }
 
-        // 2. 内存缓存
         if let cached = CoverImageCache.shared.get(cacheKey) {
             self.image = cached
             return
@@ -131,7 +128,6 @@ struct CoverImage<Placeholder: View>: View {
             return
         }
 
-        // 3. 远程两阶段（自动限流 + 负缓存 + 重试）
         do {
             let realURL = try await AlbumArtURLCache.shared.url(
                 picId: picId,

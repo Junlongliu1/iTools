@@ -13,19 +13,23 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
-                LazyVStack(spacing: DSLayout.cardSpacing) {
-                    appearanceCard
-                    developerCard
-                    footerNote
+                GlassEffectContainer(spacing: DSLayout.cardSpacing) {
+                    LazyVStack(spacing: DSLayout.cardSpacing) {
+                        appearanceCard
+                        developerCard
+                    }
                 }
                 .padding(.horizontal, DSLayout.horizontalPadding)
                 .padding(.top, 8)
                 .padding(.bottom, 24)
+
+                footerNote
+                    .padding(.horizontal, DSLayout.horizontalPadding)
+                    .padding(.bottom, 24)
             }
             .scrollEdgeEffectStyle(.soft, for: .all)
             .background(Color(.systemGroupedBackground))
             .navigationTitle("设置")
-            .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: SettingsRoute.self) { route in
                 switch route {
                 case .logs:  LogViewerView()
@@ -41,14 +45,31 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 0) {
             SettingsCardHeader(icon: "paintpalette.fill", iconColor: .pink, title: "外观")
 
-            Picker("主题", selection: $appColorScheme) {
-                ForEach(AppColorScheme.allCases) { scheme in
-                    Text(scheme.displayName).tag(scheme)
+            Menu {
+                Picker("主题", selection: $appColorScheme) {
+                    ForEach(AppColorScheme.allCases) { scheme in
+                        Label(scheme.displayName, systemImage: scheme.symbolName)
+                            .tag(scheme)
+                    }
                 }
+            } label: {
+                HStack(spacing: 12) {
+                    Text("主题")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Text(appColorScheme.displayName)
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary.opacity(0.5))
+                }
+                .padding(.horizontal, DSLayout.rowHorizontalPadding)
+                .padding(.vertical, DSLayout.rowVerticalPadding)
+                .contentShape(Rectangle())
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, DSLayout.rowHorizontalPadding)
-            .padding(.bottom, 12)
+            .tint(.primary)
             .onChange(of: appColorScheme) { _, _ in
                 UISelectionFeedbackGenerator().selectionChanged()
             }
@@ -61,7 +82,7 @@ struct SettingsView: View {
                 .padding(.bottom, 16)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
+        .cardGlass()
     }
 
     // MARK: - 开发者
@@ -83,7 +104,7 @@ struct SettingsView: View {
             .buttonStyle(GlassRowButtonStyle())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
+        .cardGlass()
     }
 
     // MARK: - 脚注

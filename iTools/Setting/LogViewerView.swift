@@ -1,10 +1,4 @@
-//
-//  LogViewerView.swift
-//  iNotion
-//
-//  日志查看器 —— iOS 26 液态玻璃风格
-//
-
+// LogViewerView.swift
 import SwiftUI
 
 // MARK: - LogLevel 的 UI 扩展
@@ -47,10 +41,12 @@ struct LogViewerView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: cardSpacing) {
-                    controlCard
-                        .id("logTop")
-                    logCard
+                GlassEffectContainer(spacing: cardSpacing) {
+                    LazyVStack(spacing: cardSpacing) {
+                        controlCard
+                            .id("logTop")
+                        logCard
+                    }
                 }
                 .padding(.horizontal, horizontalPadding)
                 .padding(.top, 8)
@@ -74,7 +70,6 @@ struct LogViewerView: View {
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle("日志面板")
-        .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             bottomBar
         }
@@ -136,7 +131,7 @@ struct LogViewerView: View {
             .padding(.bottom, 14)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: cardRadius))
+        .cardGlass()
     }
 
     private var lineCountBadge: some View {
@@ -310,6 +305,7 @@ struct LogViewerView: View {
         .padding(.bottom, 8)
     }
 
+    /// ★ 只保留 glassEffect(.interactive()) 做按下反馈，去掉叠加的自定义 ButtonStyle
     private func floatingButton(
         icon: String,
         label: String,
@@ -328,7 +324,7 @@ struct LogViewerView: View {
             .padding(.vertical, 11)
             .contentShape(Rectangle())
         }
-        .buttonStyle(FloatingCapsuleButtonStyle())
+        .buttonStyle(.plain)
         .glassEffect(.regular.interactive(), in: .capsule)
     }
 
@@ -353,17 +349,6 @@ struct LogViewerView: View {
                 showCopySuccess = false
             }
         }
-    }
-}
-
-// MARK: - 按下反馈
-
-private struct FloatingCapsuleButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
-            .opacity(configuration.isPressed ? 0.85 : 1.0)
-            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
     }
 }
 

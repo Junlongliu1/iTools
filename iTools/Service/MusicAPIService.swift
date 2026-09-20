@@ -1,7 +1,7 @@
 // MusicAPIService.swift
 import Foundation
 
-// MARK: - 限流器（5 分钟 45 次，留 5 次余量）
+// MARK: - 限流器
 
 actor RateLimiter {
     private let maxRequests: Int
@@ -13,7 +13,6 @@ actor RateLimiter {
         self.window = window
     }
 
-    /// 若额度已满，挂起直到可以请求
     func acquire() async {
         while true {
             let now = Date()
@@ -39,9 +38,13 @@ final class MusicAPIService: @unchecked Sendable {
     static let shared = MusicAPIService()
 
     private let baseURL = "https://music-api.gdstudio.xyz/api.php"
+
+    /// 元数据（search / url / lyric）限流：5 分钟 45 次
     private let rateLimiter = RateLimiter(maxRequests: 45, window: 300)
 
-    /// 元数据请求（搜索/URL/歌词）用的 session
+    /// 封面（pic）限流：独立配额，避免与音频元数据抢位
+    private let coverRateLimiter = RateLimiter(maxRequests: 30, window: 300)
+
     private let metadataSession: URLSession
 
     private init() {
@@ -130,7 +133,7 @@ final class MusicAPIService: @unchecked Sendable {
         }
     }
 
-    // MARK: - 专辑图 URL（直接用于 AsyncImage）
+    // MARK: - 专辑图 URL（直接用于 AsyncImage，注意返回的是 JSON 而非图片）
 
     func albumArtURL(
         picId: String,
@@ -148,8 +151,7 @@ final class MusicAPIService: @unchecked Sendable {
         return comps.url
     }
 
-    /// 请求 `types=pic` 元数据接口，拿到真正的图片 CDN 地址。
-    /// 注意：不能把 `albumArtURL` 的返回值直接给 AsyncImage，因为它返回的是 JSON。
+    /// 请求 `types=pic` 拿到真正的图片 CDN 地址。使用独立限流器，避免占用音频元数据配额。
     func fetchAlbumArtURL(
         picId: String,
         source: MusicSource,
@@ -166,7 +168,7 @@ final class MusicAPIService: @unchecked Sendable {
         ]
         guard let url = comps.url else { throw MusicAPIError.invalidURL }
 
-        await rateLimiter.acquire()
+        await coverRateLimiter.acquire()
 
         let (data, response) = try await metadataSession.data(from: url)
         try validate(response: response)
@@ -184,7 +186,7 @@ final class MusicAPIService: @unchecked Sendable {
             throw MusicAPIError.decodingFailed(error.localizedDescription)
         }
     }
-    
+
     // MARK: - 歌词
 
     func fetchLyric(
@@ -211,20 +213,14 @@ final class MusicAPIService: @unchecked Sendable {
         }
     }
 
-    // MARK: - ★ 音频 CDN 请求头（新增）
+    // MARK: - 音频 CDN 请求头
 
-    /// 为音频 CDN 直链构造带防盗链头的请求。
-    /// 不同源的 CDN 对 `User-Agent` / `Referer` 的校验规则不同：
-    /// - 网易云：UA 必需，Referer 建议带
-    /// - B站：UA + Referer + Origin 都必须
-    /// - JOOX：UA 必需，Referer 建议带
     func makeAudioRequest(for remoteURL: URL, source: MusicSource) -> URLRequest {
         var request = URLRequest(url: remoteURL)
         request.httpMethod = "GET"
         request.timeoutInterval = 60
         request.cachePolicy = .reloadIgnoringLocalCacheData
 
-        // 伪装成 iOS Safari —— 各 CDN 通用
         request.setValue(
             "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) "
             + "AppleWebKit/605.1.15 (KHTML, like Gecko) "
@@ -233,30 +229,23 @@ final class MusicAPIService: @unchecked Sendable {
         )
         request.setValue("zh-CN,zh;q=0.9", forHTTPHeaderField: "Accept-Language")
         request.setValue("*/*",            forHTTPHeaderField: "Accept")
-        // 明确用 close，避免长连接被 CDN 主动 RST
         request.setValue("close",          forHTTPHeaderField: "Connection")
 
         switch source {
         case .netease:
             request.setValue("https://music.163.com/", forHTTPHeaderField: "Referer")
-
         case .bilibili:
             request.setValue("https://www.bilibili.com/", forHTTPHeaderField: "Referer")
             request.setValue("https://www.bilibili.com",  forHTTPHeaderField: "Origin")
-
         case .joox:
             request.setValue("https://www.joox.com/", forHTTPHeaderField: "Referer")
-
         case .tencent:
             request.setValue("https://y.qq.com/", forHTTPHeaderField: "Referer")
-
         case .kuwo:
             request.setValue("https://www.kuwo.cn/", forHTTPHeaderField: "Referer")
-
         default:
             break
         }
-
         return request
     }
 
