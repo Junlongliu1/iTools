@@ -129,6 +129,7 @@ final class MusicAPIService: @unchecked Sendable {
         } catch let e as MusicAPIError {
             throw e
         } catch {
+            AppLogError("[MusicAPI] 歌曲 URL 解码失败 id=\(trackId) source=\(source.rawValue)：\(error.localizedDescription)")
             throw MusicAPIError.decodingFailed(error.localizedDescription)
         }
     }
@@ -183,6 +184,7 @@ final class MusicAPIService: @unchecked Sendable {
         } catch let e as MusicAPIError {
             throw e
         } catch {
+            AppLogError("[MusicAPI] 封面 URL 解码失败 pic=\(picId) source=\(source.rawValue)：\(error.localizedDescription)")
             throw MusicAPIError.decodingFailed(error.localizedDescription)
         }
     }
@@ -209,6 +211,7 @@ final class MusicAPIService: @unchecked Sendable {
         do {
             return try JSONDecoder().decode(MusicLyricResponse.self, from: data)
         } catch {
+            AppLogError("[MusicAPI] 歌词解码失败 id=\(lyricId) source=\(source.rawValue)：\(error.localizedDescription)")
             throw MusicAPIError.decodingFailed(error.localizedDescription)
         }
     }

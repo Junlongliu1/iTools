@@ -46,7 +46,6 @@ final class MusicSearchModel {
             )
             self.tracks = results
             self.hasMore = results.count >= pageSize
-            AppLogInfo("[MusicSearch] 「\(keyword)」@\(selectedSource.rawValue) 第 1 页 → \(results.count) 条")
         } catch {
             self.errorMessage = error.localizedDescription
             AppLogError("[MusicSearch] 失败: \(error.localizedDescription)")
@@ -78,8 +77,6 @@ final class MusicSearchModel {
             self.tracks.append(contentsOf: newItems)
             self.currentPage = nextPage
             self.hasMore = results.count >= pageSize
-
-            AppLogInfo("[MusicSearch] 第 \(nextPage) 页 → \(results.count) 条（去重后新增 \(newItems.count)）")
         } catch {
             ToastCenter.shared.show(
                 "加载失败：\(error.localizedDescription)",

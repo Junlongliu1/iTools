@@ -76,7 +76,10 @@ enum LocalFiles {
 
     static func openInFilesApp() {
         let path = documentsURL.path
-        guard let url = URL(string: "shareddocuments://\(path)") else { return }
+        guard let url = URL(string: "shareddocuments://\(path)") else {
+            AppLogWarn("[LocalFiles] 无法生成文件 App 链接：\(path)")
+            return
+        }
         UIApplication.shared.open(url)
     }
 
@@ -134,7 +137,6 @@ enum LocalFiles {
         }
 
         presenter.present(activity, animated: true)
-        AppLogInfo("[LocalFiles] 分享 \(urls.count) 个文件")
     }
 
     @MainActor

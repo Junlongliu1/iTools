@@ -58,7 +58,6 @@ final class MusicDownloadManager {
         guard !(states[key]?.isActive ?? false) else { return }
 
         states[key] = .fetchingURL
-        AppLogInfo("[MusicDownload] 开始下载：\(track.name) - \(track.artist) [\(quality.shortName)]")
 
         let task = Task { [weak self] in
             guard let self else { return }
@@ -85,7 +84,6 @@ final class MusicDownloadManager {
                 } catch is CancellationError {
                     self.states[key] = .idle
                     self.tasks.removeValue(forKey: key)
-                    AppLogInfo("[MusicDownload] 已取消：\(track.name)")
                     return
 
                 } catch {
@@ -108,8 +106,6 @@ final class MusicDownloadManager {
                     }
 
                     let backoff = Double(attempt) * 1.2
-                    AppLogInfo("[MusicDownload] \(String(format: "%.1f", backoff))s 后重试"
-                               + "（尝试 \(attempt + 1)/\(maxAttempts)）")
 
                     self.states[key] = .fetchingURL
                     try? await Task.sleep(for: .seconds(backoff))
@@ -165,7 +161,10 @@ final class MusicDownloadManager {
 
         // 4. 检测真实容器格式，按真实格式命名并落盘
         let format = AudioFormat.detect(at: tempURL)
-        AppLogInfo("[MusicDownload] 容器格式：\(format.displayName)（.\(format.fileExtension)）")
+
+        if format == .unknown {
+            AppLogWarn("[MusicDownload] 未知容器格式，按 mp3 扩展名保存：\(track.name)")
+        }
 
         let fileName = uniqueFileName(for: track, format: format)
         let dest = musicDirectory.appendingPathComponent(fileName)
@@ -186,7 +185,6 @@ final class MusicDownloadManager {
                 )
                 let (data, _) = try await URLSession.shared.data(from: realURL)
                 coverData = data
-                AppLogInfo("[MusicDownload] 封面已下载 (\(data.count) bytes)")
             } catch {
                 AppLogWarn("[MusicDownload] 封面下载失败（不影响音频）：\(error.localizedDescription)")
             }
@@ -206,10 +204,6 @@ final class MusicDownloadManager {
                 } else if !lyricResp.lyric.isEmpty {
                     lyricText = lyricResp.lyric
                 }
-
-                if let text = lyricText {
-                    AppLogInfo("[MusicDownload] 歌词已获取 (\(text.count) 字符)")
-                }
             } catch {
                 AppLogWarn("[MusicDownload] 歌词获取失败：\(error.localizedDescription)")
             }
@@ -225,25 +219,18 @@ final class MusicDownloadManager {
                 coverData: coverData,
                 lyricText: lyricText
             )
-            AppLogInfo("[MusicDownload] 元数据写入成功（\(format.displayName)）")
         } catch {
             AppLogError("[MusicDownload] 元数据写入失败：\(error.localizedDescription)")
         }
 
         // 8. 成功
-        let sizeBytes = (try? FileManager.default
-            .attributesOfItem(atPath: dest.path)[.size] as? Int64) ?? 0
-
         states[key] = .completed(fileName: fileName)
         tasks.removeValue(forKey: key)
-
         ToastCenter.shared.show(
             "已下载：\(track.name)",
             icon: "arrow.down.circle.fill",
             tint: .green
         )
-        AppLogInfo("[MusicDownload] 完成：\(fileName) "
-                   + "(\(sizeBytes) bytes, \(format.displayName), 第 \(attempt) 次尝试)")
     }
 
     // MARK: - 取消 / 删除 / 重置

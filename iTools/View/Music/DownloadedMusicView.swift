@@ -183,7 +183,6 @@ struct DownloadedMusicView: View {
     private func reload() {
         files = LocalFiles.listDownloadedMusic()
         totalSize = LocalFiles.totalMusicSize()
-        AppLogInfo("[Downloaded] 加载 \(files.count) 个文件，共 \(LocalFiles.formattedSize(totalSize))")
     }
 
     private func deleteFile(_ url: URL) {
@@ -201,7 +200,6 @@ struct DownloadedMusicView: View {
 
     private func clearAll() {
         let n = LocalFiles.deleteAll()
-        AppLogInfo("[Downloaded] 清空 \(n) 个文件")
         ToastCenter.shared.show("已清空 \(n) 个文件", icon: "trash.fill", tint: .red)
         withAnimation(.easeOut(duration: 0.2)) { reload() }
     }

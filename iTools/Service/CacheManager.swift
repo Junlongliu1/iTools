@@ -85,7 +85,6 @@ final class CacheManager {
     func clearLogArchives() async -> Int {
         let removed = await LogManager.shared.clearArchives()
         logBytes = await LogManager.shared.totalLogBytes()
-        AppLogInfo("[Cache] 清理日志归档 \(removed) 个")
         return removed
     }
 
@@ -100,11 +99,19 @@ final class CacheManager {
             tempFileBytes = 0
             return
         }
+        var failed = 0
         for url in files {
-            try? FileManager.default.removeItem(at: url)
+            do {
+                try FileManager.default.removeItem(at: url)
+            } catch {
+                failed += 1
+            }
+        }
+
+        if failed > 0 {
+            AppLogWarn("[Cache] 有 \(failed) 个临时文件删除失败")
         }
         tempFileBytes = 0
-        AppLogInfo("[Cache] 清理临时文件 \(files.count) 个")
     }
 
     /// 全部清理（不含已下载音乐）

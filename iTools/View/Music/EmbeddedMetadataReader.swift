@@ -54,10 +54,7 @@ final class EmbeddedMetadataReader: @unchecked Sendable {
         let cost = Self.estimatedCost(of: result)
 
         cache.setObject(Box(result, mtime: mtime), forKey: key, cost: cost)
-
-        sizeLock.lock()
-        _approximateSize = min(_approximateSize + cost, cache.totalCostLimit)
-        sizeLock.unlock()
+        addSize(cost)
 
         return result
     }
@@ -68,18 +65,34 @@ final class EmbeddedMetadataReader: @unchecked Sendable {
 
         if let boxed = cache.object(forKey: key) {
             let cost = Self.estimatedCost(of: boxed.value)
-            sizeLock.lock()
-            _approximateSize = max(_approximateSize - cost, 0)
-            sizeLock.unlock()
+            subtractSize(cost)
         }
         cache.removeObject(forKey: key)
     }
 
     func clearCache() {
         cache.removeAllObjects()
+        resetSize()
+    }
+
+    // MARK: - 同步临界区
+
+    private func addSize(_ delta: Int) {
         sizeLock.lock()
+        defer { sizeLock.unlock() }
+        _approximateSize = min(_approximateSize + delta, cache.totalCostLimit)
+    }
+
+    private func subtractSize(_ delta: Int) {
+        sizeLock.lock()
+        defer { sizeLock.unlock() }
+        _approximateSize = max(_approximateSize - delta, 0)
+    }
+
+    private func resetSize() {
+        sizeLock.lock()
+        defer { sizeLock.unlock() }
         _approximateSize = 0
-        sizeLock.unlock()
     }
 
     // MARK: - 私有

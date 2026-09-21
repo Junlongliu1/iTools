@@ -83,6 +83,8 @@ enum SPFKMetadataAdapter {
 
         if tagFile.load(), let raw = tagFile.dictionary {
             dict = stringDictionary(from: raw)
+        } else {
+            AppLogWarn("[Metadata] TagFile 加载失败或为空：\(path)")
         }
 
         dict["TITLE"]  = track.name
@@ -94,12 +96,14 @@ enum SPFKMetadataAdapter {
         tagFile.dictionary = dict
 
         guard tagFile.save() else {
+            AppLogError("[Metadata] TagFile 保存失败：\(path)")
             throw AdapterError.saveFailed(path)
         }
 
         // 2. 封面
         if let coverData, !coverData.isEmpty {
             guard let cgImage = jpegDataToCGImage(coverData) else {
+                AppLogError("[Metadata] 封面解码失败：\(path)")
                 throw AdapterError.coverDecodeFailed
             }
 
@@ -111,6 +115,7 @@ enum SPFKMetadataAdapter {
             )
 
             guard TagPicture.write(ref, path: path) else {
+                AppLogError("[Metadata] 封面写入失败：\(path)")
                 throw AdapterError.coverWriteFailed
             }
         }

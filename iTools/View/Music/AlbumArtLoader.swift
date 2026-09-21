@@ -43,7 +43,7 @@ actor AlbumArtURLCache {
                 } catch let e as MusicAPIError {
                     lastError = e
                     if case .httpStatus(503) = e {
-                        AppLogInfo("[Cover] 第 \(attempt)/3 次 503，稍后重试 pic=\(picId)")
+                        AppLogWarn("[Cover] 第 \(attempt)/3 次 503，稍后重试 pic=\(picId)")
                         continue
                     }
                     throw e
@@ -167,6 +167,7 @@ struct CoverImage<Placeholder: View>: View {
             )
             let (data, _) = try await URLSession.shared.data(from: realURL)
             guard let img = UIImage(data: data) else {
+                AppLogWarn("[Cover] 图片解码失败 pic=\(picId) src=\(source.rawValue)")
                 failed = true
                 return
             }
