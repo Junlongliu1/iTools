@@ -14,6 +14,7 @@ struct iToolsApp: App {
                 migrationPlan: AnniversaryMigrationPlan.self
             )
         } catch {
+            AppLogError("创建 ModelContainer 失败: \(error)")
             fatalError("❌ 创建 ModelContainer 失败: \(error)")
         }
 
@@ -50,14 +51,19 @@ private struct RootView: View {
         _ = await ReminderScheduler.requestAuthorization()
 
         let descriptor = FetchDescriptor<Anniversary>()
-        guard let items = try? context.fetch(descriptor) else { return }
+        let items: [Anniversary]
+        do {
+            items = try context.fetch(descriptor)
+        } catch {
+            AppLogError("启动时拉取纪念日失败: \(error.localizedDescription)")
+            return
+        }
 
-        // ✅ 旧数据迁移时 SwiftData 可能给所有行填了同一个默认 UUID，
-        //    这里做一次去重修复，保证通知标识符稳定且唯一。
         var seen = Set<UUID>()
         var needsSave = false
         for item in items {
             if seen.contains(item.uuid) {
+                AppLogWarn("检测到重复 UUID，已重新分配 [title=\(item.title)]")
                 item.uuid = UUID()
                 needsSave = true
             } else {
@@ -65,8 +71,11 @@ private struct RootView: View {
             }
         }
         if needsSave {
-            do { try context.save() }
-            catch { /* 修复失败不阻塞启动 */ }
+            do {
+                try context.save()
+            } catch {
+                AppLogError("UUID 去重保存失败: \(error.localizedDescription)")
+            }
         }
 
         await ReminderScheduler.rescheduleAll(items)

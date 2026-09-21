@@ -69,7 +69,6 @@ struct AnniversaryView: View {
         return all.filter { $0.persistentModelID != p.persistentModelID }
     }
 
-    /// ✅ 预计算 daysUntil，避免 body 求值时反复调用
     private var upcoming: [Anniversary] {
         displayAll
             .compactMap { item -> (Anniversary, Int)? in
@@ -82,7 +81,6 @@ struct AnniversaryView: View {
             .map(\.0)
     }
 
-    /// ✅ 预计算 daysSinceLast
     private var recentPast: [Anniversary] {
         displayAll
             .compactMap { item -> (Anniversary, Int)? in
@@ -136,7 +134,6 @@ struct AnniversaryView: View {
                 .padding(.bottom, 120)
             }
             .background(Color(.systemGroupedBackground))
-            // ✅ 使用自动边缘效果，深色模式下更自然
             .scrollEdgeEffectStyle(.automatic, for: .all)
             .navigationTitle("纪念日")
             .navigationBarTitleDisplayMode(.large)
@@ -179,7 +176,6 @@ struct AnniversaryView: View {
             }
             .padding(.horizontal, 4)
 
-            // ✅ 容器 spacing 语义 = 玻璃融合阈值；卡片之间希望独立 → 设 0
             GlassEffectContainer(spacing: 0) {
                 if upcoming.isEmpty {
                     emptyUpcoming
@@ -249,7 +245,6 @@ struct AnniversaryView: View {
                     }
                 }
             }
-            // ✅ 整块玻璃加入交互反馈
             .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
             .animation(.smooth(duration: 0.3), value: recentPast.map(\.id))
         }
@@ -287,7 +282,7 @@ struct AnniversaryView: View {
         }
     }
 
-    // MARK: ✅ 内联列表：行级玻璃
+    // MARK: 内联列表：行级玻璃
 
     private var inlineList: some View {
         GlassEffectContainer(spacing: 0) {
@@ -392,7 +387,6 @@ struct AnniversaryView: View {
             .padding(.bottom, 92)
             .transition(.move(edge: .bottom).combined(with: .opacity))
             .id(item.persistentModelID)
-            // ✅ VoiceOver：合并为一个元素
             .accessibilityElement(children: .combine)
             .accessibilityLabel("已删除 \(item.title)")
             .accessibilityHint("双击撤销按钮恢复")
@@ -410,7 +404,6 @@ struct AnniversaryView: View {
         deleteTask?.cancel()
 
         if let prev = pendingDelete, prev.persistentModelID != item.persistentModelID {
-            // 上一次未落定 → 先落定；失败则回滚
             if !performDelete(prev) {
                 withAnimation(.smooth(duration: 0.3)) { pendingDelete = nil }
                 return
@@ -421,7 +414,6 @@ struct AnniversaryView: View {
             pendingDelete = item
         }
 
-        // ✅ VoiceOver 播报
         AccessibilityNotification.Announcement("已删除 \(item.title)").post()
 
         deleteTask = Task {
@@ -431,7 +423,6 @@ struct AnniversaryView: View {
                 guard pendingDelete?.persistentModelID == item.persistentModelID else { return }
                 let ok = performDelete(item)
                 withAnimation(.smooth(duration: 0.3)) {
-                    // ✅ 失败时恢复，让用户看到错误
                     pendingDelete = ok ? nil : item
                 }
             }
@@ -446,7 +437,7 @@ struct AnniversaryView: View {
         }
     }
 
-    /// ✅ 返回是否成功，供调用方决定是否回滚
+    /// 返回是否成功，供调用方决定是否回滚
     @discardableResult
     private func performDelete(_ item: Anniversary) -> Bool {
         ReminderScheduler.cancel(item)
@@ -455,6 +446,7 @@ struct AnniversaryView: View {
             try context.save()
             return true
         } catch {
+            AppLogError("删除纪念日失败 [\(item.title)]: \(error.localizedDescription)")
             errorMessage = "操作失败：\(error.localizedDescription)"
             return false
         }
@@ -464,6 +456,7 @@ struct AnniversaryView: View {
         do {
             try context.save()
         } catch {
+            AppLogError("保存上下文失败: \(error.localizedDescription)")
             errorMessage = "操作失败：\(error.localizedDescription)"
         }
     }

@@ -121,7 +121,7 @@ final class Anniversary {
         set { reminderAdvanceDays = newValue.rawValue }
     }
 
-    // MARK: ✅ 缓存日历（避免 body 求值时反复构造）
+    // MARK: 缓存日历（避免 body 求值时反复构造）
 
     static let gregorianCalendar: Calendar = {
         var c = Calendar(identifier: .gregorian)
