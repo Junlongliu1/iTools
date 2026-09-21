@@ -19,6 +19,15 @@ struct iToolsApp: App {
         }
 
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
+
+        // 注入 ModelContext 给 CloudBackupManager
+        CloudBackupManager.shared.configure(modelContext: container.mainContext)
+
+        // 注册后台备份任务
+        BackgroundBackupScheduler.shared.register()
+        BackgroundBackupScheduler.shared.reschedule(
+            policy: CloudBackupSettings.shared.policy
+        )
     }
 
     var body: some Scene {

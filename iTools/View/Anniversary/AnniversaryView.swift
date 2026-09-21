@@ -60,6 +60,9 @@ struct AnniversaryView: View {
 
     @State private var errorMessage: String?
 
+    /// 坚果云备份设置入口
+    @State private var showCloudSettings = false
+
     @Namespace private var glass
 
     // MARK: 数据源
@@ -139,13 +142,27 @@ struct AnniversaryView: View {
             .navigationBarTitleDisplayMode(.large)
             .searchable(text: $searchText, prompt: "搜索名称或备注")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { sortMenu }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        showCloudSettings = true
+                    } label: {
+                        Image(systemName: "externaldrive.badge.icloud")
+                    }
+                    .accessibilityLabel("云盘备份")
+
+                    sortMenu
+                }
             }
             .sheet(isPresented: $showCreate) {
                 AnniversaryEditor(mode: .create)
             }
             .sheet(item: $editingItem) { item in
                 AnniversaryEditor(mode: .edit(item))
+            }
+            .sheet(isPresented: $showCloudSettings) {
+                NavigationStack {
+                    CloudBackupView()
+                }
             }
             .overlay(alignment: .bottomTrailing) { addButton }
             .overlay(alignment: .bottom) { undoToast }
@@ -339,8 +356,9 @@ struct AnniversaryView: View {
                 }
             }
         } label: {
-            Image(systemName: "arrow.up.arrow.down")
+            Image(systemName: "arrow.up.arrow.down.circle")
         }
+        .accessibilityLabel("排序方式")
     }
 
     // MARK: 浮动 +
