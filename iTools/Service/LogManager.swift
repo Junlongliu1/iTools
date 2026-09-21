@@ -103,16 +103,17 @@ final class LogManager {
     private(set) var entries: [LogEntry] = []
     var lineCount: Int { entries.count }
 
-    var consoleEnabled: Bool = true
-
-    /// Release 默认关闭写文件（避免把 URL / token 类信息落盘）
-    var fileWriteEnabled: Bool = {
+    // 控制台：DEBUG 打开，Release 关闭
+    var consoleEnabled: Bool = {
         #if DEBUG
         return true
         #else
         return false
         #endif
     }()
+
+    // 写文件：默认打开（Release 也写）
+    var fileWriteEnabled: Bool = true
 
     /// ★ 内存中最多保留的日志行数
     private let maxEntriesInMemory = 1500
