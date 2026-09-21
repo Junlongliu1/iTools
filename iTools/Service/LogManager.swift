@@ -184,6 +184,17 @@ final class LogManager {
             AppLogInfo("=== 日志已清空 ===")
         }
     }
+    
+    /// Logs 目录总占用（字节）
+    func totalLogBytes() async -> Int {
+        await writer.totalBytes()
+    }
+
+    /// 清理归档日志，返回清理数量（当前日志不受影响）
+    @discardableResult
+    func clearArchives() async -> Int {
+        await writer.clearArchives()
+    }
 
     private static func parseLines(_ content: String) -> [LogEntry] {
         guard !content.isEmpty else { return [] }
@@ -273,6 +284,42 @@ actor LogFileWriter {
         guard let url = fileURL else { return }
         try? "".write(to: url, atomically: true, encoding: .utf8)
         fileSize = 0
+    }
+    
+    /// 当前 Logs 目录内所有 .log 文件的总字节数
+    func totalBytes() -> Int {
+        guard let files = try? fileManager.contentsOfDirectory(
+            at: logsDirectory,
+            includingPropertiesForKeys: [.fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else { return 0 }
+
+        var total = 0
+        for url in files where url.pathExtension == "log" {
+            if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+                total += size
+            }
+        }
+        return total
+    }
+
+    /// 清理归档日志（保留当前正在写入的当日文件）
+    @discardableResult
+    func clearArchives() -> Int {
+        guard let current = fileURL else { return 0 }
+        guard let files = try? fileManager.contentsOfDirectory(
+            at: logsDirectory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else { return 0 }
+
+        var removed = 0
+        for url in files where url.pathExtension == "log" && url != current {
+            if (try? fileManager.removeItem(at: url)) != nil {
+                removed += 1
+            }
+        }
+        return removed
     }
 
     private func rollOver() {

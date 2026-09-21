@@ -3,7 +3,7 @@ import Foundation
 import UIKit
 import Observation
 
-/// 应用缓存管理：封面图片内存、封面 URL、URLSession 响应缓存、临时文件
+/// 应用缓存管理：封面图片内存、嵌入元数据、封面 URL、URLSession 响应缓存、日志归档、临时文件
 @MainActor
 @Observable
 final class CacheManager {
@@ -12,14 +12,21 @@ final class CacheManager {
     // MARK: - 状态
 
     private(set) var imageMemoryBytes: Int = 0
+    private(set) var metadataBytes: Int = 0
     private(set) var coverURLCacheCount: Int = 0
     private(set) var urlCacheBytes: Int = 0
+    private(set) var logBytes: Int = 0
     private(set) var tempFileBytes: Int = 0
+
+    /// 只读展示：已下载音乐属于用户数据，不计入缓存总量
+    private(set) var musicBytes: Int = 0
+    private(set) var musicFileCount: Int = 0
 
     private(set) var isRefreshing = false
 
+    /// 缓存总量（不含已下载音乐）
     var totalBytes: Int {
-        imageMemoryBytes + urlCacheBytes + tempFileBytes
+        imageMemoryBytes + metadataBytes + urlCacheBytes + logBytes + tempFileBytes
     }
 
     var hasAnyCache: Bool {
@@ -35,17 +42,23 @@ final class CacheManager {
         defer { isRefreshing = false }
 
         imageMemoryBytes = CoverImageCache.shared.approximateSize
+        metadataBytes = EmbeddedMetadataReader.shared.approximateSize
         coverURLCacheCount = await AlbumArtURLCache.shared.count
 
         let urlCache = URLCache.shared
         urlCacheBytes = urlCache.currentDiskUsage + urlCache.currentMemoryUsage
 
+        logBytes = await LogManager.shared.totalLogBytes()
         tempFileBytes = Self.tempFilesSize()
+
+        let musicFiles = LocalFiles.listDownloadedMusic()
+        musicFileCount = musicFiles.count
+        musicBytes = Int(LocalFiles.totalMusicSize())
     }
 
     // MARK: - 清理
 
-    /// 清理图片相关：内存图片 + 封面 URL 缓存 + 503 负缓存
+    /// 清理图片相关：封面内存图 + 封面 URL 缓存 + 503 负缓存
     func clearImageCaches() async {
         CoverImageCache.shared.clear()
         await AlbumArtURLCache.shared.clear()
@@ -55,13 +68,28 @@ final class CacheManager {
         coverURLCacheCount = 0
     }
 
+    /// 清理音频嵌入元数据缓存
+    func clearMetadataCache() {
+        EmbeddedMetadataReader.shared.clearCache()
+        metadataBytes = 0
+    }
+
     /// 清理 URLSession 磁盘/内存响应缓存
     func clearURLCache() {
         URLCache.shared.removeAllCachedResponses()
         urlCacheBytes = 0
     }
 
-    /// 清理临时目录残留文件（进行中的下载不受影响，其临时文件在写入完成后才落盘）
+    /// 清理日志归档（保留当前正在写入的当日文件）
+    @discardableResult
+    func clearLogArchives() async -> Int {
+        let removed = await LogManager.shared.clearArchives()
+        logBytes = await LogManager.shared.totalLogBytes()
+        AppLogInfo("[Cache] 清理日志归档 \(removed) 个")
+        return removed
+    }
+
+    /// 清理临时目录残留文件（进行中的下载不受影响）
     func clearTempFiles() {
         let tmp = FileManager.default.temporaryDirectory
         guard let files = try? FileManager.default.contentsOfDirectory(
@@ -79,10 +107,12 @@ final class CacheManager {
         AppLogInfo("[Cache] 清理临时文件 \(files.count) 个")
     }
 
-    /// 全部清理
+    /// 全部清理（不含已下载音乐）
     func clearAll() async {
         await clearImageCaches()
+        clearMetadataCache()
         clearURLCache()
+        await clearLogArchives()
         clearTempFiles()
         await refresh()
     }

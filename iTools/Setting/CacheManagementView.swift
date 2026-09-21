@@ -4,39 +4,58 @@ import SwiftUI
 // MARK: - 缓存分类
 
 private enum CacheCategory: String, CaseIterable, Identifiable {
-    case image, url, temp
+    case image, metadata, url, log, temp
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .image: return "图片缓存"
-        case .url:   return "网络缓存"
-        case .temp:  return "临时文件"
+        case .image:    return "图片缓存"
+        case .metadata: return "元数据缓存"
+        case .url:      return "网络缓存"
+        case .log:      return "日志归档"
+        case .temp:     return "临时文件"
+        }
+    }
+
+    /// 图例用的短名
+    var shortTitle: String {
+        switch self {
+        case .image:    return "图片"
+        case .metadata: return "元数据"
+        case .url:      return "网络"
+        case .log:      return "日志"
+        case .temp:     return "临时"
         }
     }
 
     var subtitle: String {
         switch self {
-        case .image: return "专辑封面内存与地址缓存"
-        case .url:   return "URLSession 响应缓存"
-        case .temp:  return "下载过程残留文件"
+        case .image:    return "专辑封面内存与地址缓存"
+        case .metadata: return "音频文件内嵌标签与封面"
+        case .url:      return "URLSession 响应缓存"
+        case .log:      return "历史归档日志"
+        case .temp:     return "下载过程残留文件"
         }
     }
 
     var icon: String {
         switch self {
-        case .image: return "photo.stack.fill"
-        case .url:   return "network"
-        case .temp:  return "folder.badge.minus"
+        case .image:    return "photo.stack.fill"
+        case .metadata: return "tag.fill"
+        case .url:      return "network"
+        case .log:      return "doc.text.fill"
+        case .temp:     return "folder.badge.minus"
         }
     }
 
     var color: Color {
         switch self {
-        case .image: return .pink
-        case .url:   return .blue
-        case .temp:  return .orange
+        case .image:    return .pink
+        case .metadata: return .purple
+        case .url:      return .blue
+        case .log:      return .brown
+        case .temp:     return .orange
         }
     }
 }
@@ -57,6 +76,7 @@ struct CacheManagementView: View {
                 LazyVStack(spacing: DSLayout.cardSpacing) {
                     overviewCard
                     detailCard
+                    musicCard
                     tipCard
                 }
             }
@@ -70,8 +90,6 @@ struct CacheManagementView: View {
         .task { await manager.refresh() }
         .refreshable { await manager.refresh() }
         .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
-
-        // ★ 中央 Alert（不再使用底部分类选择的 confirmationDialog）
         .alert(confirmTitle, isPresented: $showConfirm) {
             Button("取消", role: .cancel) {}
             Button("清理", role: .destructive) {
@@ -102,21 +120,6 @@ struct CacheManagementView: View {
                 if manager.isRefreshing {
                     ProgressView().controlSize(.mini)
                 }
-
-                Spacer()
-
-                Button {
-                    Task { await manager.refresh() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 32, height: 32)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .disabled(manager.isRefreshing)
-                .accessibilityLabel("刷新")
             }
             .padding(.horizontal, DSLayout.rowHorizontalPadding)
             .padding(.bottom, 12)
@@ -145,9 +148,17 @@ struct CacheManagementView: View {
                     CacheCategory.image.color
                         .frame(width: w * CGFloat(manager.imageMemoryBytes) / total)
                 }
+                if manager.metadataBytes > 0 {
+                    CacheCategory.metadata.color
+                        .frame(width: w * CGFloat(manager.metadataBytes) / total)
+                }
                 if manager.urlCacheBytes > 0 {
                     CacheCategory.url.color
                         .frame(width: w * CGFloat(manager.urlCacheBytes) / total)
+                }
+                if manager.logBytes > 0 {
+                    CacheCategory.log.color
+                        .frame(width: w * CGFloat(manager.logBytes) / total)
                 }
                 if manager.tempFileBytes > 0 {
                     CacheCategory.temp.color
@@ -166,18 +177,18 @@ struct CacheManagementView: View {
     // MARK: - 图例
 
     private var legend: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 10) {
             ForEach(CacheCategory.allCases) { category in
-                HStack(spacing: 5) {
+                HStack(spacing: 4) {
                     Circle()
                         .fill(category.color)
-                        .frame(width: 7, height: 7)
-                    Text(category.title)
-                        .font(.system(size: 11))
+                        .frame(width: 6, height: 6)
+                    Text(category.shortTitle)
+                        .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                 }
             }
-            Spacer()
+            Spacer(minLength: 0)
         }
     }
 
@@ -223,7 +234,6 @@ struct CacheManagementView: View {
             UISelectionFeedbackGenerator().selectionChanged()
         } label: {
             HStack(spacing: 12) {
-                // 勾选圆圈
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 20))
                     .foregroundStyle(
@@ -233,7 +243,6 @@ struct CacheManagementView: View {
                     )
                     .contentTransition(.symbolEffect(.replace))
 
-                // 图标
                 Image(systemName: category.icon)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
@@ -243,7 +252,6 @@ struct CacheManagementView: View {
                             .fill(category.color)
                     )
 
-                // 标题 + 条形图
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 6) {
                         Text(category.title)
@@ -280,7 +288,6 @@ struct CacheManagementView: View {
 
                 Spacer(minLength: 8)
 
-                // 大小
                 Text(LocalFiles.formattedSize(Int64(bytes)))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(isAvailable ? .secondary : .tertiary)
@@ -301,6 +308,48 @@ struct CacheManagementView: View {
             return "· \(manager.coverURLCacheCount) 条封面地址"
         }
         return ""
+    }
+
+    // MARK: - 已下载音乐（只读）
+
+    private var musicCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SettingsCardHeader(
+                icon: "music.note.list",
+                iconColor: .green,
+                title: "已下载音乐"
+            )
+
+            HStack(spacing: 12) {
+                Image(systemName: "folder.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 26, height: 26)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(Color.green)
+                    )
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(LocalFiles.formattedSize(Int64(manager.musicBytes)))
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.primary)
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+
+                    Text("\(manager.musicFileCount) 个文件 · 用户数据，不参与缓存清理")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 8)
+            }
+            .padding(.horizontal, DSLayout.rowHorizontalPadding)
+            .padding(.vertical, 12)
+            .padding(.bottom, 4)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardGlass()
     }
 
     // MARK: - 提示
@@ -360,7 +409,6 @@ struct CacheManagementView: View {
 
     // MARK: - 计算属性
 
-    /// 仅统计有占用且被勾选的分类
     private var effectiveSelection: Set<CacheCategory> {
         selection.filter { size(for: $0) > 0 }
     }
@@ -394,9 +442,11 @@ struct CacheManagementView: View {
 
     private func size(for category: CacheCategory) -> Int {
         switch category {
-        case .image: return manager.imageMemoryBytes
-        case .url:   return manager.urlCacheBytes
-        case .temp:  return manager.tempFileBytes
+        case .image:    return manager.imageMemoryBytes
+        case .metadata: return manager.metadataBytes
+        case .url:      return manager.urlCacheBytes
+        case .log:      return manager.logBytes
+        case .temp:     return manager.tempFileBytes
         }
     }
 
@@ -409,8 +459,14 @@ struct CacheManagementView: View {
         if targets.contains(.image) {
             await manager.clearImageCaches()
         }
+        if targets.contains(.metadata) {
+            manager.clearMetadataCache()
+        }
         if targets.contains(.url) {
             manager.clearURLCache()
+        }
+        if targets.contains(.log) {
+            await manager.clearLogArchives()
         }
         if targets.contains(.temp) {
             manager.clearTempFiles()
@@ -418,7 +474,6 @@ struct CacheManagementView: View {
 
         await manager.refresh()
 
-        // ★ 清理后清空选择，保持「默认不选」
         withAnimation(.easeOut(duration: 0.2)) {
             selection.removeAll()
         }
