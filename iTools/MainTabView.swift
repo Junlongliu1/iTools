@@ -2,7 +2,7 @@
 import SwiftUI
 
 enum AppTab: Hashable {
-    case music, files, anniversary, alarm, settings
+    case music, files, anniversary, widget, settings
 }
 
 struct MainTabView: View {
@@ -24,8 +24,8 @@ struct MainTabView: View {
                 AnniversaryView()
             }
 
-            Tab("闹钟", systemImage: "alarm.fill", value: AppTab.alarm) {
-                AlarmPlaceholderView()
+            Tab("小组件", systemImage: "square.grid.2x2.fill", value: AppTab.widget) {
+                WidgetGalleryView()
             }
 
             Tab("设置", systemImage: "gearshape.fill", value: AppTab.settings) {
