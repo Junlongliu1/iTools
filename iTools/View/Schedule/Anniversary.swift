@@ -46,40 +46,94 @@ enum AnniversaryCategory: String, CaseIterable, Codable, Hashable, Identifiable 
     }
 }
 
+// MARK: - 提醒选项
+
+enum ReminderOption: Int, CaseIterable, Identifiable {
+    case off         = -1
+    case sameDay     = 0
+    case oneDay      = 1
+    case threeDays   = 3
+    case oneWeek     = 7
+    case thirtyDays  = 30
+
+    var id: Int { rawValue }
+
+    var title: String {
+        switch self {
+        case .off:        return "不提醒"
+        case .sameDay:    return "当天提醒"
+        case .oneDay:     return "提前 1 天"
+        case .threeDays:  return "提前 3 天"
+        case .oneWeek:    return "提前 7 天"
+        case .thirtyDays: return "提前 30 天"
+        }
+    }
+}
+
 // MARK: - 数据模型
 
 @Model
 final class Anniversary {
-    // 每个属性都给显式默认值，SwiftData 迁移时更容易推断
+    var uuid: UUID = UUID()
+
     var title: String = ""
     var date: Date = Date()
     var isYearly: Bool = true
     var isLunar: Bool = false
+    var lunarIsLeapMonth: Bool = false
     var notes: String = ""
     var categoryRaw: String = AnniversaryCategory.anniversary.rawValue
     var createdAt: Date = Date()
+    var isPinned: Bool = false
+    var reminderAdvanceDays: Int = ReminderOption.off.rawValue
 
     init(
         title: String,
         date: Date,
         isYearly: Bool = true,
         isLunar: Bool = false,
+        lunarIsLeapMonth: Bool = false,
         notes: String = "",
-        category: AnniversaryCategory = .anniversary
+        category: AnniversaryCategory = .anniversary,
+        isPinned: Bool = false,
+        reminderAdvanceDays: Int = ReminderOption.off.rawValue
     ) {
+        self.uuid = UUID()
         self.title = title
         self.date = date
         self.isYearly = isYearly
         self.isLunar = isLunar
+        self.lunarIsLeapMonth = lunarIsLeapMonth
         self.notes = notes
         self.categoryRaw = category.rawValue
         self.createdAt = Date()
+        self.isPinned = isPinned
+        self.reminderAdvanceDays = reminderAdvanceDays
     }
 
     var category: AnniversaryCategory {
         get { AnniversaryCategory(rawValue: categoryRaw) ?? .other }
         set { categoryRaw = newValue.rawValue }
     }
+
+    var reminder: ReminderOption {
+        get { ReminderOption(rawValue: reminderAdvanceDays) ?? .off }
+        set { reminderAdvanceDays = newValue.rawValue }
+    }
+
+    // MARK: ✅ 缓存日历（避免 body 求值时反复构造）
+
+    static let gregorianCalendar: Calendar = {
+        var c = Calendar(identifier: .gregorian)
+        c.locale = Locale(identifier: "zh_CN")
+        return c
+    }()
+
+    static let chineseCalendar: Calendar = {
+        var c = Calendar(identifier: .chinese)
+        c.locale = Locale(identifier: "zh_CN")
+        return c
+    }()
 
     // MARK: 下一次发生日期
 
@@ -88,9 +142,8 @@ final class Anniversary {
         return nextGregorianDate
     }
 
-    /// 公历
     private var nextGregorianDate: Date {
-        let cal = Calendar.current
+        let cal = Self.gregorianCalendar
         guard isYearly else { return date }
 
         let today = cal.startOfDay(for: Date())
@@ -110,35 +163,56 @@ final class Anniversary {
         return candidate
     }
 
-    /// 农历：取今年农历月/日，已过则顺延到下一农历年
+    /// 农历下一次：优先精确匹配闰月；若当年无闰月则回退到非闰月；日不存在则回退到当月最后一天
     private var nextLunarDate: Date {
-        let lunar = Calendar(identifier: .chinese)
-        let gregorian = Calendar.current
+        let lunar = Self.chineseCalendar
+        let gregorian = Self.gregorianCalendar
         let today = gregorian.startOfDay(for: Date())
 
         let target = lunar.dateComponents([.month, .day], from: date)
         guard let tm = target.month, let td = target.day else { return date }
 
         let currentLunarYear = lunar.component(.year, from: Date())
-        for offset in 0...3 {
-            var dc = DateComponents()
-            dc.year = currentLunarYear + offset
-            dc.month = tm
-            dc.day = td
-            dc.isLeapMonth = false
+        let wantLeap = lunarIsLeapMonth
 
-            if let candidate = lunar.date(from: dc),
-               gregorian.startOfDay(for: candidate) >= today {
-                return candidate
+        for offset in 0...4 {
+            let year = currentLunarYear + offset
+
+            if let d = Self.lunarDate(year: year, month: tm, day: td, leap: wantLeap),
+               gregorian.startOfDay(for: d) >= today {
+                return d
+            }
+
+            if wantLeap,
+               let d = Self.lunarDate(year: year, month: tm, day: td, leap: false),
+               gregorian.startOfDay(for: d) >= today {
+                return d
             }
         }
         return date
     }
 
+    private static func lunarDate(year: Int, month: Int, day: Int, leap: Bool) -> Date? {
+        let lunar = Self.chineseCalendar
+        var dc = DateComponents()
+        dc.year = year
+        dc.month = month
+        dc.day = day
+        dc.isLeapMonth = leap
+
+        if let d = lunar.date(from: dc) { return d }
+
+        for fallback in stride(from: day - 1, through: 28, by: -1) {
+            dc.day = fallback
+            if let d = lunar.date(from: dc) { return d }
+        }
+        return nil
+    }
+
     // MARK: 倒计时
 
     var daysUntil: Int {
-        let cal = Calendar.current
+        let cal = Self.gregorianCalendar
         let from = cal.startOfDay(for: Date())
         let to = cal.startOfDay(for: nextDate)
         return cal.dateComponents([.day], from: from, to: to).day ?? 0
@@ -146,10 +220,30 @@ final class Anniversary {
 
     var isToday: Bool { daysUntil == 0 }
 
+    var lastDate: Date? {
+        let cal = Self.gregorianCalendar
+        if !isYearly {
+            let d = cal.startOfDay(for: date)
+            return d <= cal.startOfDay(for: Date()) ? d : nil
+        }
+        return cal.date(byAdding: .year, value: -1, to: nextDate)
+    }
+
+    var daysSinceLast: Int? {
+        guard let last = lastDate else { return nil }
+        let cal = Self.gregorianCalendar
+        return cal.dateComponents(
+            [.day],
+            from: cal.startOfDay(for: last),
+            to: cal.startOfDay(for: Date())
+        ).day
+    }
+
     var yearsCount: Int {
-        let cal = Calendar.current
+        guard isYearly else { return 0 }
+        let cal = Self.gregorianCalendar
         let y1 = cal.component(.year, from: date)
-        let y2 = cal.component(.year, from: Date())
+        let y2 = cal.component(.year, from: nextDate)
         return max(0, y2 - y1)
     }
 
@@ -163,18 +257,17 @@ final class Anniversary {
 
     // MARK: 农历文本
 
-    /// 例如「腊月初八」，非农历返回 nil
     var lunarDateText: String? {
         guard isLunar else { return nil }
-        let lunar = Calendar(identifier: .chinese)
+        let lunar = Self.chineseCalendar
         let comps = lunar.dateComponents([.month, .day], from: date)
         guard let m = comps.month, let d = comps.day else { return nil }
-        return "\(Self.lunarMonthName(m))\(Self.lunarDayName(d))"
+        let leap = lunarIsLeapMonth ? "闰" : ""
+        return "\(leap)\(Self.lunarMonthName(m))\(Self.lunarDayName(d))"
     }
 
-    /// 公历文本：如「3月15日」
     var gregorianDateText: String {
-        let c = Calendar.current
+        let c = Self.gregorianCalendar
         let m = c.component(.month, from: nextDate)
         let d = c.component(.day, from: nextDate)
         return "\(m)月\(d)日"
@@ -196,6 +289,50 @@ final class Anniversary {
     }
 }
 
+// MARK: - 排序
+
+enum AnniversarySortOrder: String, CaseIterable, Identifiable {
+    case nextDate
+    case created
+    case title
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .nextDate: return "按日期"
+        case .created:  return "按创建"
+        case .title:    return "按名称"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .nextDate: return "calendar"
+        case .created:  return "clock"
+        case .title:    return "textformat"
+        }
+    }
+
+    func sorted(_ items: [Anniversary]) -> [Anniversary] {
+        let base: [Anniversary]
+        switch self {
+        case .nextDate:
+            base = items.sorted { $0.nextDate < $1.nextDate }
+        case .created:
+            base = items.sorted { $0.createdAt > $1.createdAt }
+        case .title:
+            base = items.sorted {
+                $0.title.localizedCompare($1.title) == .orderedAscending
+            }
+        }
+
+        let pinned = base.filter { $0.isPinned }
+        let normal = base.filter { !$0.isPinned }
+        return pinned + normal
+    }
+}
+
 // MARK: - 数组扩展
 
 extension Array where Element == Anniversary {
@@ -210,7 +347,7 @@ extension Array where Element == Anniversary {
     }
 }
 
-// MARK: - Schema 版本化（防止后续加字段再丢数据）
+// MARK: - Schema 版本化
 
 enum AnniversarySchemaV1: VersionedSchema {
     static var versionIdentifier: Schema.Version { Schema.Version(1, 0, 0) }
