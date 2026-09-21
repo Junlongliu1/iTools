@@ -2,7 +2,7 @@
 import SwiftUI
 
 enum AppTab: Hashable {
-    case music, files, reminders, alarm, settings
+    case music, files, anniversary, alarm, settings
 }
 
 struct MainTabView: View {
@@ -13,17 +13,21 @@ struct MainTabView: View {
             Tab("音乐", systemImage: "music.note.list", value: AppTab.music) {
                 MusicSearchView()
             }
+
             Tab("文件", systemImage: "folder.fill", value: AppTab.files) {
                 NavigationStack {
                     DownloadedMusicView()
                 }
             }
-            Tab("提醒", systemImage: "checklist", value: AppTab.reminders) {
-                RemindersPlaceholderView()
+
+            Tab("纪念日", systemImage: "heart.text.square.fill", value: AppTab.anniversary) {
+                AnniversaryView()
             }
+
             Tab("闹钟", systemImage: "alarm.fill", value: AppTab.alarm) {
                 AlarmPlaceholderView()
             }
+
             Tab("设置", systemImage: "gearshape.fill", value: AppTab.settings) {
                 SettingsView()
             }
@@ -45,6 +49,7 @@ private struct PlaceholderScreen: View {
                 Image(systemName: icon)
                     .font(.system(size: 54, weight: .light))
                     .foregroundStyle(.secondary)
+
                 Text(message)
                     .font(.headline)
                     .foregroundStyle(.secondary)
@@ -56,14 +61,12 @@ private struct PlaceholderScreen: View {
     }
 }
 
-private struct RemindersPlaceholderView: View {
-    var body: some View {
-        PlaceholderScreen(title: "提醒", icon: "checklist", message: "提醒功能开发中")
-    }
-}
-
 private struct AlarmPlaceholderView: View {
     var body: some View {
-        PlaceholderScreen(title: "闹钟", icon: "alarm.fill", message: "闹钟功能开发中")
+        PlaceholderScreen(
+            title: "闹钟",
+            icon: "alarm.fill",
+            message: "闹钟功能开发中"
+        )
     }
 }

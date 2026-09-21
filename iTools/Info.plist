@@ -2,7 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>UIFileSharingEnabled</key>
-	<true/>
+    <key>UIFileSharingEnabled</key>
+    <true/>
+
+    <key>NSRemindersFullAccessUsageDescription</key>
+    <string>用于读取并同步系统提醒事项到日程页面。</string>
+
+    <key>NSRemindersUsageDescription</key>
+    <string>用于读取并同步系统提醒事项到日程页面。</string>
 </dict>
 </plist>
