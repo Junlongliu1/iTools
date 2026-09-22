@@ -144,6 +144,8 @@ actor NutstoreWebDAVClient {
         }
 
         let url = baseURL.appendingPathComponent(path)
+        AppLogInfo("[WebDAV] GET \(url.absoluteString)")
+
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue(authHeader, forHTTPHeaderField: "Authorization")
@@ -190,29 +192,23 @@ actor NutstoreWebDAVClient {
             throw NutstoreError.xmlParseFailed
         }
 
-        // WebDAV 的 href 通常是完整路径，需要去掉 baseURL 前缀
-        let basePrefix = baseURL.absoluteString
+        // baseURL 的 path 部分，例如 "/dav/"
+        // 去掉尾斜杠得到 "/dav"
+        var trimmedBase = baseURL.path
+        if trimmedBase.hasSuffix("/") { trimmedBase.removeLast() }
+
+        let targetPath = basePath.trimmingCharacters(
+            in: CharacterSet(charactersIn: "/"))
 
         return delegate.entries.compactMap { entry -> RemoteFile? in
-            var relativePath = entry.href
-
-            // 去掉完整 URL 前缀
-            if relativePath.hasPrefix(basePrefix) {
-                relativePath = String(relativePath.dropFirst(basePrefix.count))
-            }
-            // 去掉开头的 /
-            if relativePath.hasPrefix("/") {
-                relativePath = String(relativePath.dropFirst())
-            }
-            // 去掉尾部的 /
-            if relativePath.hasSuffix("/") {
-                relativePath = String(relativePath.dropLast())
-            }
+            // 归一化为「相对 baseURL 的路径」
+            let relativePath = Self.normalizeHref(
+                entry.href,
+                basePathComponent: trimmedBase
+            )
 
             // 跳过自身（根目录条目）
-            if relativePath.isEmpty
-                || relativePath == basePath.trimmingCharacters(
-                    in: CharacterSet(charactersIn: "/")) {
+            if relativePath.isEmpty || relativePath == targetPath {
                 return nil
             }
 
@@ -229,6 +225,43 @@ actor NutstoreWebDAVClient {
                 path: relativePath
             )
         }
+    }
+
+    /// 把 WebDAV 返回的 href 归一化成「相对 baseURL 的路径」
+    ///
+    /// 支持三种形式：
+    /// - 完整 URL：`https://dav.jianguoyun.com/dav/AnniversaryBackup/a.json`
+    /// - 绝对路径：`/dav/AnniversaryBackup/a.json`
+    /// - 相对路径：`AnniversaryBackup/a.json`
+    ///
+    /// - Parameters:
+    ///   - href: 原始 href
+    ///   - basePathComponent: baseURL 的 path 部分（如 `/dav`，无尾斜杠）
+    private static func normalizeHref(
+        _ href: String,
+        basePathComponent: String
+    ) -> String {
+        var s = href
+
+        // 1) 完整 URL → 取 path
+        if let url = URL(string: s), url.scheme != nil {
+            s = url.path
+        }
+
+        // 2) 百分号解码（中文 / 空格文件名必需）
+        s = s.removingPercentEncoding ?? s
+
+        // 3) 去掉 basePathComponent 前缀
+        //    例如 "/dav/AnniversaryBackup/a.json" → "/AnniversaryBackup/a.json"
+        if !basePathComponent.isEmpty, s.hasPrefix(basePathComponent) {
+            s = String(s.dropFirst(basePathComponent.count))
+        }
+
+        // 4) 去掉首尾斜杠
+        while s.hasPrefix("/") { s.removeFirst() }
+        while s.hasSuffix("/") { s.removeLast() }
+
+        return s
     }
 }
 
@@ -329,6 +362,7 @@ enum NutstoreError: LocalizedError {
             case 401: return "认证失败，请重新登录"
             case 403: return "无权限访问该文件夹"
             case 404: return "文件不存在"
+            case 409: return "路径无效或父目录不存在"
             case 507: return "坚果云存储空间不足"
             default:  return "服务器错误（\(code)）"
             }
