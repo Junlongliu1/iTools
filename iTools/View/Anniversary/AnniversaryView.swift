@@ -38,6 +38,13 @@ enum CategorySelection: Hashable, Identifiable {
         }
     }
 
+    var emptyTitle: String {
+        switch self {
+        case .all: return "还没有任何纪念日"
+        case .category(let c): return "暂无\(c.title)"
+        }
+    }
+
     static var allCases: [CategorySelection] {
         [.all] + AnniversaryCategory.allCases.map(CategorySelection.category)
     }
@@ -47,30 +54,21 @@ enum CategorySelection: Hashable, Identifiable {
 
 struct AnniversaryView: View {
     @Query(sort: \Anniversary.date) private var all: [Anniversary]
-    @Environment(\.modelContext) private var context
+
+    @State private var path = NavigationPath()
 
     @State private var showCreate = false
-    @State private var editingItem: Anniversary?
+    @State private var showCloudSettings = false
     @State private var selectedCategory: CategorySelection = .all
     @State private var searchText = ""
     @State private var sortOrder: AnniversarySortOrder = .nextDate
 
-    @State private var pendingDelete: Anniversary?
-    @State private var deleteTask: Task<Void, Never>?
-
-    @State private var errorMessage: String?
-
-    /// 坚果云备份设置入口
-    @State private var showCloudSettings = false
-
-    @Namespace private var glass
+    /// 仅用于「跨天刷新」：值变化会触发 body 重新求值。
+    @State private var today = Calendar.current.startOfDay(for: Date())
 
     // MARK: 数据源
 
-    private var displayAll: [Anniversary] {
-        guard let p = pendingDelete else { return all }
-        return all.filter { $0.persistentModelID != p.persistentModelID }
-    }
+    private var displayAll: [Anniversary] { all }
 
     private var upcoming: [Anniversary] {
         displayAll
@@ -103,8 +101,8 @@ struct AnniversaryView: View {
             base = displayAll.filter { $0.category == c }
         }
 
-        let searched: [Anniversary]
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let searched: [Anniversary]
         if q.isEmpty {
             searched = base
         } else {
@@ -113,31 +111,27 @@ struct AnniversaryView: View {
                 || $0.notes.localizedStandardContains(q)
             }
         }
-
         return sortOrder.sorted(searched)
     }
 
     // MARK: body
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    upcomingSection
-                        .padding(.horizontal, 16)
-
-                    if !recentPast.isEmpty {
-                        recentPastSection
-                            .padding(.horizontal, 16)
-                    }
-
-                    filterAndList
-                }
-                .padding(.top, 4)
-                .padding(.bottom, 120)
+        NavigationStack(path: $path) {
+            List {
+                upcomingSection
+                recentPastSection
+                filterSection
+                footerSection
             }
+            .listStyle(.plain)
+            .listRowSpacing(6)
+            .scrollContentBackground(.hidden)
             .background(Color(.systemGroupedBackground))
-            .scrollEdgeEffectStyle(.automatic, for: .all)
+            .scrollEdgeEffectStyle(.soft, for: .top)
+            .scrollEdgeEffectStyle(.hard, for: .bottom)
+            .contentMargins(.top, 4, for: .scrollContent)
+            .contentMargins(.bottom, 120, for: .scrollContent)
             .navigationTitle("纪念日")
             .navigationBarTitleDisplayMode(.large)
             .searchable(text: $searchText, prompt: "搜索名称或备注")
@@ -153,139 +147,182 @@ struct AnniversaryView: View {
                     sortMenu
                 }
             }
+            .navigationDestination(for: Anniversary.self) { item in
+                AnniversaryDetailView(anniversary: item)
+            }
             .sheet(isPresented: $showCreate) {
                 AnniversaryEditor(mode: .create)
             }
-            .sheet(item: $editingItem) { item in
-                AnniversaryEditor(mode: .edit(item))
-            }
             .sheet(isPresented: $showCloudSettings) {
-                NavigationStack {
-                    CloudBackupView()
+                NavigationStack { CloudBackupView() }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                GlassEffectContainer(spacing: 16) {
+                    addButton
+                        .padding(.trailing, 20)
+                        .padding(.bottom, 20)
                 }
             }
-            .overlay(alignment: .bottomTrailing) { addButton }
-            .overlay(alignment: .bottom) { undoToast }
-            .alert("出错了", isPresented: errorBinding) {
-                Button("好", role: .cancel) { errorMessage = nil }
-            } message: {
-                Text(errorMessage ?? "")
+        }
+        // 跨天刷新：60 秒轮询，日期变化才触发重渲染
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                if Task.isCancelled { return }
+                let t = Calendar.current.startOfDay(for: Date())
+                if t != today { today = t }
             }
         }
     }
 
-    // MARK: 即将到来
+    // MARK: Section 1 · 即将到来
 
+    @ViewBuilder
     private var upcomingSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("即将到来")
-                    .font(.system(size: 20, weight: .bold))
-
-                Spacer()
-
-                if !upcoming.isEmpty {
-                    Text("30 天内 \(upcoming.count) 个")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .contentTransition(.numericText())
-                }
-            }
-            .padding(.horizontal, 4)
-
-            GlassEffectContainer(spacing: 0) {
-                if upcoming.isEmpty {
-                    emptyUpcoming
-                        .glassEffectID("upcoming.empty", in: glass)
-                } else {
-                    VStack(spacing: 10) {
-                        ForEach(upcoming) { item in
-                            UpcomingGlassCard(anniversary: item)
-                                .glassEffectID(item.id, in: glass)
-                                .contentShape(Rectangle())
-                                .onTapGesture { editingItem = item }
-                        }
+        if !upcoming.isEmpty {
+            Section {
+                ForEach(upcoming) { item in
+                    Button {
+                        path.append(item)
+                    } label: {
+                        UpcomingGlassCard(anniversary: item)
                     }
+                    .buttonStyle(.plain)
+                    .listRowInsets(.init(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
+            } header: {
+                sectionHeader(
+                    title: "即将到来",
+                    trailing: "30 天内 \(upcoming.count) 个"
+                )
             }
-            .animation(.smooth(duration: 0.35), value: upcoming.map(\.id))
         }
     }
 
-    private var emptyUpcoming: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "calendar.badge.plus")
-                .font(.system(size: 32, weight: .light))
-                .foregroundStyle(.secondary.opacity(0.7))
+    // MARK: Section 2 · 刚刚过去
 
-            Text("未来 30 天没有纪念日")
-                .font(.system(size: 15, weight: .medium))
+    @ViewBuilder
+    private var recentPastSection: some View {
+        if !recentPast.isEmpty {
+            Section {
+                ForEach(recentPast) { item in
+                    Button {
+                        path.append(item)
+                    } label: {
+                        PastRow(anniversary: item)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 2)
+                            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+                    }
+                    .buttonStyle(.plain)
+                    .listRowInsets(.init(top: 3, leading: 16, bottom: 3, trailing: 16))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+            } header: {
+                sectionHeader(
+                    title: "刚刚过去",
+                    trailing: "30 天内 \(recentPast.count) 个"
+                )
+            }
+        }
+    }
 
-            Text("点击右下角 + 添加，或切换下方分类查看")
-                .font(.system(size: 12))
+    // MARK: Section 3 · 筛选 + 列表
+
+    @ViewBuilder
+    private var filterSection: some View {
+        Section {
+            categoryPicker
+                .padding(.horizontal, 4)
+                .padding(.vertical, 6)
+                .listRowInsets(.init(top: 0, leading: 16, bottom: 0, trailing: 16))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+
+            if selectedItems.isEmpty {
+                emptyInline
+                    .listRowInsets(.init(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            } else {
+                ForEach(selectedItems) { item in
+                    Button {
+                        path.append(item)
+                    } label: {
+                        AnniversaryRow(anniversary: item)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 2)
+                            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+                    }
+                    .buttonStyle(.plain)
+                    .listRowInsets(.init(top: 3, leading: 16, bottom: 3, trailing: 16))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+            }
+        } header: {
+            EmptyView()
+        }
+    }
+
+    // MARK: Section 4 · 空白 footer
+
+    private var footerSection: some View {
+        Section {
+            Color.clear
+                .frame(height: 1)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+        }
+    }
+
+    // MARK: Section 头部
+
+    private func sectionHeader(title: String, trailing: String?) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(.primary)
+                .textCase(nil)
+
+            Spacer()
+
+            if let trailing {
+                Text(trailing)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .textCase(nil)
+                    .contentTransition(.numericText())
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 8)
+        .padding(.bottom, 2)
+    }
+
+    // MARK: 空状态
+
+    private var emptyInline: some View {
+        VStack(spacing: 8) {
+            Image(systemName: selectedCategory.symbol)
+                .font(.system(size: 28, weight: .light))
+                .foregroundStyle(.secondary.opacity(0.6))
+
+            Text(searchText.isEmpty
+                 ? selectedCategory.emptyTitle
+                 : "没有匹配「\(searchText)」的纪念日")
+                .font(.system(size: 14))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
+        .padding(.vertical, 32)
         .glassEffect(.regular, in: .rect(cornerRadius: 22))
     }
 
-    // MARK: 最近过去
-
-    private var recentPastSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("刚刚过去")
-                    .font(.system(size: 20, weight: .bold))
-                Spacer()
-                Text("30 天内 \(recentPast.count) 个")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .contentTransition(.numericText())
-            }
-            .padding(.horizontal, 4)
-
-            VStack(spacing: 0) {
-                ForEach(Array(recentPast.enumerated()), id: \.element.id) { index, item in
-                    PastRow(anniversary: item)
-                        .padding(.horizontal, 14)
-                        .contentShape(Rectangle())
-                        .onTapGesture { editingItem = item }
-                        .contextMenu {
-                            Button(role: .destructive) { requestDelete(item) } label: {
-                                Label("删除", systemImage: "trash")
-                            }
-                        }
-
-                    if index < recentPast.count - 1 {
-                        Divider().padding(.leading, 62)
-                    }
-                }
-            }
-            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
-            .animation(.smooth(duration: 0.3), value: recentPast.map(\.id))
-        }
-    }
-
-    // MARK: 筛选器 + 结果
-
-    private var filterAndList: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            categoryPicker
-                .padding(.horizontal, 16)
-
-            Group {
-                if selectedItems.isEmpty {
-                    emptyInline
-                } else {
-                    inlineList
-                }
-            }
-            .padding(.horizontal, 16)
-        }
-        .animation(.smooth(duration: 0.3), value: selectedCategory)
-        .animation(.smooth(duration: 0.3), value: selectedItems.map(\.id))
-    }
+    // MARK: 分类 Picker
 
     private var categoryPicker: some View {
         Picker("分类", selection: $selectedCategory) {
@@ -297,53 +334,6 @@ struct AnniversaryView: View {
         .onChange(of: selectedCategory) { _, _ in
             UISelectionFeedbackGenerator().selectionChanged()
         }
-    }
-
-    // MARK: 内联列表：行级玻璃
-
-    private var inlineList: some View {
-        GlassEffectContainer(spacing: 0) {
-            LazyVStack(spacing: 6) {
-                ForEach(selectedItems) { item in
-                    AnniversaryRow(anniversary: item)
-                        .padding(.horizontal, 14)
-                        .contentShape(Rectangle())
-                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
-                        .glassEffectID(item.id, in: glass)
-                        .onTapGesture { editingItem = item }
-                        .contextMenu {
-                            Button { editingItem = item } label: {
-                                Label("编辑", systemImage: "pencil")
-                            }
-                            Button { togglePin(item) } label: {
-                                Label(item.isPinned ? "取消置顶" : "置顶",
-                                      systemImage: item.isPinned ? "pin.slash" : "pin")
-                            }
-                            Divider()
-                            Button(role: .destructive) { requestDelete(item) } label: {
-                                Label("删除", systemImage: "trash")
-                            }
-                        }
-                }
-            }
-        }
-    }
-
-    private var emptyInline: some View {
-        VStack(spacing: 8) {
-            Image(systemName: selectedCategory.symbol)
-                .font(.system(size: 28, weight: .light))
-                .foregroundStyle(.secondary.opacity(0.6))
-
-            Text(searchText.isEmpty
-                 ? "暂无\(selectedCategory.title)"
-                 : "没有匹配「\(searchText)」的纪念日")
-                .font(.system(size: 14))
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 32)
-        .glassEffect(.regular, in: .rect(cornerRadius: 22))
     }
 
     // MARK: 排序菜单
@@ -375,115 +365,6 @@ struct AnniversaryView: View {
         .buttonBorderShape(.circle)
         .controlSize(.extraLarge)
         .tint(.pink)
-        .padding(.trailing, 20)
-        .padding(.bottom, 20)
-    }
-
-    // MARK: 撤销删除 toast
-
-    @ViewBuilder
-    private var undoToast: some View {
-        if let item = pendingDelete {
-            HStack(spacing: 12) {
-                Image(systemName: "trash")
-                    .foregroundStyle(.red)
-
-                Text("已删除「\(item.title)」")
-                    .font(.subheadline)
-                    .lineLimit(1)
-
-                Spacer(minLength: 8)
-
-                Button("撤销") { undoDelete() }
-                    .font(.subheadline.weight(.semibold))
-                    .tint(.pink)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 18))
-            .padding(.horizontal, 20)
-            .padding(.bottom, 92)
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-            .id(item.persistentModelID)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("已删除 \(item.title)")
-            .accessibilityHint("双击撤销按钮恢复")
-        }
-    }
-
-    // MARK: 操作
-
-    private func togglePin(_ item: Anniversary) {
-        item.isPinned.toggle()
-        saveContext()
-    }
-
-    private func requestDelete(_ item: Anniversary) {
-        deleteTask?.cancel()
-
-        if let prev = pendingDelete, prev.persistentModelID != item.persistentModelID {
-            if !performDelete(prev) {
-                withAnimation(.smooth(duration: 0.3)) { pendingDelete = nil }
-                return
-            }
-        }
-
-        withAnimation(.smooth(duration: 0.3)) {
-            pendingDelete = item
-        }
-
-        AccessibilityNotification.Announcement("已删除 \(item.title)").post()
-
-        deleteTask = Task {
-            try? await Task.sleep(for: .seconds(5))
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                guard pendingDelete?.persistentModelID == item.persistentModelID else { return }
-                let ok = performDelete(item)
-                withAnimation(.smooth(duration: 0.3)) {
-                    pendingDelete = ok ? nil : item
-                }
-            }
-        }
-    }
-
-    private func undoDelete() {
-        deleteTask?.cancel()
-        deleteTask = nil
-        withAnimation(.smooth(duration: 0.3)) {
-            pendingDelete = nil
-        }
-    }
-
-    /// 返回是否成功，供调用方决定是否回滚
-    @discardableResult
-    private func performDelete(_ item: Anniversary) -> Bool {
-        ReminderScheduler.cancel(item)
-        context.delete(item)
-        do {
-            try context.save()
-            return true
-        } catch {
-            AppLogError("删除纪念日失败 [\(item.title)]: \(error.localizedDescription)")
-            errorMessage = "操作失败：\(error.localizedDescription)"
-            return false
-        }
-    }
-
-    private func saveContext() {
-        do {
-            try context.save()
-        } catch {
-            AppLogError("保存上下文失败: \(error.localizedDescription)")
-            errorMessage = "操作失败：\(error.localizedDescription)"
-        }
-    }
-
-    private var errorBinding: Binding<Bool> {
-        Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )
     }
 }
 
@@ -493,6 +374,10 @@ struct UpcomingGlassCard: View {
     let anniversary: Anniversary
 
     var body: some View {
+        cardContent
+    }
+
+    private var cardContent: some View {
         HStack(spacing: 14) {
             dateBadge
 
@@ -549,7 +434,7 @@ struct UpcomingGlassCard: View {
     private var cardGlass: Glass {
         var g: Glass = .regular.interactive()
         if anniversary.isToday {
-            g = g.tint(anniversary.category.topColor.opacity(0.28))
+            g = g.tint(anniversary.category.topColor.opacity(0.22))
         }
         return g
     }
@@ -621,6 +506,10 @@ struct AnniversaryRow: View {
     let anniversary: Anniversary
 
     var body: some View {
+        rowContent
+    }
+
+    private var rowContent: some View {
         HStack(alignment: .center, spacing: 14) {
             VStack(spacing: 0) {
                 Text(monthText)
@@ -706,6 +595,10 @@ struct PastRow: View {
     let anniversary: Anniversary
 
     var body: some View {
+        rowContent
+    }
+
+    private var rowContent: some View {
         HStack(alignment: .center, spacing: 14) {
             VStack(spacing: 0) {
                 Text(monthText)

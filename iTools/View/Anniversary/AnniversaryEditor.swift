@@ -118,6 +118,8 @@ struct AnniversaryEditor: View {
                         .lineLimit(3...6)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(.regularMaterial)
             .navigationTitle(isEditing ? "编辑纪念日" : "新建纪念日")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -135,6 +137,9 @@ struct AnniversaryEditor: View {
                 Button("好", role: .cancel) { errorMessage = nil }
             } message: {
                 Text(errorMessage ?? "")
+            }
+            .task {
+                if isLunar { refreshLunarLeapFlag() }
             }
         }
     }
@@ -176,6 +181,7 @@ struct AnniversaryEditor: View {
             existing.category = category
             existing.isPinned = isPinned
             existing.reminderAdvanceDays = reminder.rawValue
+            existing.invalidateNextDateCache()
             item = existing
         }
 
@@ -187,7 +193,6 @@ struct AnniversaryEditor: View {
             return
         }
 
-        // 通知排程（异步，不阻塞 UI）
         Task { await ReminderScheduler.reschedule(item) }
 
         dismiss()

@@ -105,17 +105,21 @@ struct MusicSearchView: View {
     @Bindable private var historyStore = SearchHistoryStore.shared
     @FocusState private var isFocused: Bool
 
+    // 折叠状态
+    @State private var isSourceExpanded = true
+    @State private var isQualityExpanded = true
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 searchBar
+                recentHistoryBar
 
                 ScrollView {
                     GlassEffectContainer(spacing: DSLayout.cardSpacing) {
                         LazyVStack(spacing: DSLayout.cardSpacing) {
                             optionsCard
                             resultArea
-                            historySection
                             attributionFooter
                         }
                     }
@@ -165,47 +169,152 @@ struct MusicSearchView: View {
         .padding(.bottom, 12)
     }
 
-    // MARK: - 音乐源 + 音质
+    // MARK: - 最近搜索历史（横向，最多 5 条，与搜索框左右对齐）
+
+    @ViewBuilder
+    private var recentHistoryBar: some View {
+        if !historyStore.items.isEmpty {
+            HStack(spacing: 8) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(historyStore.items.prefix(5)), id: \.self) { keyword in
+                            historyChip(keyword)
+                        }
+                    }
+                    // 左侧与搜索框左边缘对齐
+                    .padding(.leading, DSLayout.horizontalPadding)
+                    // 内容滚动到尾部时，给"清除"按钮留出呼吸空间
+                    .padding(.trailing, 8)
+                }
+
+                Button("清除") {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        historyStore.clear()
+                    }
+                    UISelectionFeedbackGenerator().selectionChanged()
+                }
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.red)
+                // 右侧与搜索框右边缘对齐
+                .padding(.trailing, DSLayout.horizontalPadding)
+            }
+            .padding(.bottom, 10)
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+
+    private func historyChip(_ keyword: String) -> some View {
+        Button {
+            selectHistory(keyword)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "clock")
+                    .font(.system(size: 10, weight: .medium))
+
+                Text(keyword)
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: 140, alignment: .leading)
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: .capsule)
+    }
+
+    // MARK: - 音乐源 + 音质（可折叠）
 
     private var optionsCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SettingsCardHeader(
+            collapsibleHeader(
                 icon: "antenna.radiowaves.left.and.right",
                 iconColor: .purple,
-                title: "音乐源"
+                title: "音乐源",
+                isExpanded: $isSourceExpanded
             )
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(MusicSource.ordered) { source in
-                        sourceChip(source)
+            if isSourceExpanded {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(MusicSource.ordered) { source in
+                            sourceChip(source)
+                        }
                     }
+                    .padding(.horizontal, DSLayout.rowHorizontalPadding)
+                    .padding(.bottom, 4)
                 }
-                .padding(.horizontal, DSLayout.rowHorizontalPadding)
-                .padding(.bottom, 4)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
             SettingsRowDivider()
-                .padding(.top, 8)
+                .padding(.top, isSourceExpanded ? 8 : 0)
 
-            SettingsCardHeader(
+            collapsibleHeader(
                 icon: "waveform",
                 iconColor: .blue,
-                title: "音质"
+                title: "音质",
+                isExpanded: $isQualityExpanded
             )
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(AudioQuality.allCases) { q in
-                        qualityChip(q)
+            if isQualityExpanded {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(AudioQuality.allCases) { q in
+                            qualityChip(q)
+                        }
                     }
+                    .padding(.horizontal, DSLayout.rowHorizontalPadding)
+                    .padding(.bottom, 14)
                 }
-                .padding(.horizontal, DSLayout.rowHorizontalPadding)
-                .padding(.bottom, 14)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+        .animation(.spring(response: 0.32, dampingFraction: 0.86), value: isSourceExpanded)
+        .animation(.spring(response: 0.32, dampingFraction: 0.86), value: isQualityExpanded)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .cardGlass()
+        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
+    }
+
+    private func collapsibleHeader(
+        icon: String,
+        iconColor: Color,
+        title: String,
+        isExpanded: Binding<Bool>
+    ) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                isExpanded.wrappedValue.toggle()
+            }
+            UISelectionFeedbackGenerator().selectionChanged()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(iconColor)
+
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .textCase(.uppercase)
+                    .tracking(0.5)
+
+                Spacer()
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary.opacity(0.55))
+                    .rotationEffect(.degrees(isExpanded.wrappedValue ? 0 : -90))
+            }
+            .padding(.horizontal, DSLayout.rowHorizontalPadding)
+            .padding(.top, 14)
+            .padding(.bottom, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func sourceChip(_ source: MusicSource) -> some View {
@@ -213,7 +322,7 @@ struct MusicSearchView: View {
         return Button {
             guard source != model.selectedSource else { return }
             withAnimation(.easeOut(duration: 0.15)) {
-                model.selectedSource = source   // didSet 自动 resetForSourceChange()
+                model.selectedSource = source
             }
             UISelectionFeedbackGenerator().selectionChanged()
         } label: {
@@ -228,16 +337,15 @@ struct MusicSearchView: View {
             .foregroundStyle(selected ? Color.accentColor : Color.secondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
-            .background(
-                Capsule().fill(
-                    selected
-                    ? Color.accentColor.opacity(0.15)
-                    : Color.secondary.opacity(0.08)
-                )
-            )
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .glassEffect(
+            selected
+            ? .regular.tint(Color.accentColor.opacity(0.18)).interactive()
+            : .regular.interactive(),
+            in: .capsule
+        )
     }
 
     private func qualityChip(_ q: AudioQuality) -> some View {
@@ -253,16 +361,15 @@ struct MusicSearchView: View {
                 .foregroundStyle(selected ? Color.accentColor : Color.secondary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
-                .background(
-                    Capsule().fill(
-                        selected
-                        ? Color.accentColor.opacity(0.15)
-                        : Color.secondary.opacity(0.08)
-                    )
-                )
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .glassEffect(
+            selected
+            ? .regular.tint(Color.accentColor.opacity(0.18)).interactive()
+            : .regular.interactive(),
+            in: .capsule
+        )
     }
 
     // MARK: - 结果区
@@ -292,7 +399,7 @@ struct MusicSearchView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
-        .cardGlass()
+        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
     }
 
     private func errorCard(_ message: String) -> some View {
@@ -313,7 +420,7 @@ struct MusicSearchView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 34)
-        .cardGlass()
+        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
     }
 
     private var emptyResultCard: some View {
@@ -330,7 +437,7 @@ struct MusicSearchView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
-        .cardGlass()
+        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
     }
 
     private var resultCard: some View {
@@ -353,7 +460,7 @@ struct MusicSearchView: View {
             .padding(.bottom, 6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .cardGlass()
+        .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
     }
 
     @ViewBuilder
@@ -367,7 +474,7 @@ struct MusicSearchView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
-            .cardGlass()
+            .glassEffect(.regular, in: .rect(cornerRadius: DSLayout.cardRadius))
 
         } else if model.hasMore {
             Button {
@@ -393,109 +500,6 @@ struct MusicSearchView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
         }
-    }
-
-    // MARK: - 搜索历史
-
-    @ViewBuilder
-    private var historySection: some View {
-        if historyStore.items.isEmpty {
-            emptyHistoryCard
-        } else {
-            historyCard
-        }
-    }
-
-    private var historyCard: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.blue)
-                Text("搜索历史")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                    .tracking(0.5)
-                Spacer()
-                Button("全部清除") {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        historyStore.clear()
-                    }
-                    UISelectionFeedbackGenerator().selectionChanged()
-                }
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.red)
-            }
-            .padding(.horizontal, DSLayout.rowHorizontalPadding)
-            .padding(.top, 14)
-            .padding(.bottom, 6)
-
-            ForEach(historyStore.items, id: \.self) { item in
-                historyRow(item)
-                if item != historyStore.items.last {
-                    SettingsRowDivider()
-                }
-            }
-            .padding(.bottom, 6)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .cardGlass()
-    }
-
-    private func historyRow(_ keyword: String) -> some View {
-        HStack(spacing: 12) {
-            Button {
-                selectHistory(keyword)
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 20)
-
-                    Text(keyword)
-                        .font(.system(size: 14))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-
-                    Spacer(minLength: 8)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(GlassRowButtonStyle())
-
-            Button {
-                withAnimation(.easeOut(duration: 0.15)) {
-                    historyStore.remove(keyword)
-                }
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary.opacity(0.5))
-                    .frame(width: 24, height: 24)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .padding(.trailing, DSLayout.rowHorizontalPadding - 8)
-        }
-        .padding(.leading, DSLayout.rowHorizontalPadding)
-        .padding(.vertical, 4)
-    }
-
-    private var emptyHistoryCard: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 26))
-                .foregroundStyle(.secondary.opacity(0.45))
-
-            Text("暂无搜索历史")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 26)
-        .cardGlass()
     }
 
     // MARK: - 页脚署名

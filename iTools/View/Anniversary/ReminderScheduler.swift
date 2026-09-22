@@ -63,26 +63,27 @@ enum ReminderScheduler {
         UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
     }
 
+    /// 全量重排：
     static func rescheduleAll(_ items: [Anniversary]) async {
         let center = UNUserNotificationCenter.current()
 
-        // 1. 构造不可变请求
         var pairs: [(id: String, request: UNNotificationRequest)] = []
+        var staleIDs: [String] = []
         pairs.reserveCapacity(items.count)
+
         for item in items {
             let id = identifier(for: item)
             if let req = makeRequest(for: item) {
                 pairs.append((id, req))
             } else {
-                // 不提醒 / 已过期：至少清掉旧的
-                center.removePendingNotificationRequests(withIdentifiers: [id])
+                staleIDs.append(id)
             }
         }
 
-        // 2. 清掉旧排程（仍有效的通过 identifier 覆盖）
-        center.removePendingNotificationRequests(withIdentifiers: pairs.map(\.id))
+        if !staleIDs.isEmpty {
+            center.removePendingNotificationRequests(withIdentifiers: staleIDs)
+        }
 
-        // 3. 并发提交
         await withTaskGroup(of: Void.self) { group in
             for pair in pairs {
                 group.addTask {
@@ -102,11 +103,9 @@ enum ReminderScheduler {
         "anniversary-\(item.uuid.uuidString)"
     }
 
-    /// 构造请求（无副作用，可在并发提交前完成）
     private static func makeRequest(for item: Anniversary) -> UNNotificationRequest? {
         let advance = item.reminderAdvanceDays
         guard advance >= 0 else { return nil }
-        guard let fire = fireDate(for: item, advanceDays: advance) else { return nil }
 
         let content = UNMutableNotificationContent()
         content.title = item.title
@@ -115,17 +114,29 @@ enum ReminderScheduler {
         content.interruptionLevel = .timeSensitive
         content.userInfo = ["anniversaryUUID": item.uuid.uuidString]
 
-        var comps = Calendar.current.dateComponents(
-            [.year, .month, .day, .hour, .minute], from: fire
-        )
-        comps.second = 0
+        if let fire = fireDate(for: item, advanceDays: advance) {
+            var comps = Calendar.current.dateComponents(
+                [.year, .month, .day, .hour, .minute], from: fire
+            )
+            comps.second = 0
+            let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
+            return UNNotificationRequest(
+                identifier: identifier(for: item),
+                content: content,
+                trigger: trigger
+            )
+        }
 
-        let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
-        return UNNotificationRequest(
-            identifier: identifier(for: item),
-            content: content,
-            trigger: trigger
-        )
+        if item.isToday {
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 3, repeats: false)
+            return UNNotificationRequest(
+                identifier: identifier(for: item),
+                content: content,
+                trigger: trigger
+            )
+        }
+
+        return nil
     }
 
     /// 触发时间：nextDate 提前 advanceDays 天的 09:00；已过去则 nil

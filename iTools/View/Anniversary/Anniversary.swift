@@ -87,6 +87,11 @@ final class Anniversary {
     var isPinned: Bool = false
     var reminderAdvanceDays: Int = ReminderOption.off.rawValue
 
+    /// 计算属性 `nextDate` 的当日缓存。以「今天 0 点」为 key，
+    /// 跨天后自动失效（无需手动清理）。
+    @Transient private var cachedNextDate: Date?
+    @Transient private var cachedNextDateAnchor: Date?
+
     init(
         title: String,
         date: Date,
@@ -135,11 +140,23 @@ final class Anniversary {
         return c
     }()
 
-    // MARK: 下一次发生日期
+    // MARK: 下一次发生日期（带当日缓存）
 
     var nextDate: Date {
-        if isLunar && isYearly { return nextLunarDate }
-        return nextGregorianDate
+        let today = Self.gregorianCalendar.startOfDay(for: Date())
+        if cachedNextDateAnchor == today, let cached = cachedNextDate {
+            return cached
+        }
+        let value = isLunar && isYearly ? nextLunarDate : nextGregorianDate
+        cachedNextDate = value
+        cachedNextDateAnchor = today
+        return value
+    }
+
+    /// 编辑保存后手动失效缓存（模型内容变了，但日期锚点没变）
+    func invalidateNextDateCache() {
+        cachedNextDate = nil
+        cachedNextDateAnchor = nil
     }
 
     private var nextGregorianDate: Date {
@@ -314,11 +331,15 @@ enum AnniversarySortOrder: String, CaseIterable, Identifiable {
         }
     }
 
+    /// 预计算排序 key，避免 n log n 次调用 `nextDate`
     func sorted(_ items: [Anniversary]) -> [Anniversary] {
         let base: [Anniversary]
         switch self {
         case .nextDate:
-            base = items.sorted { $0.nextDate < $1.nextDate }
+            base = items
+                .map { (item: $0, key: $0.nextDate) }
+                .sorted { $0.key < $1.key }
+                .map(\.item)
         case .created:
             base = items.sorted { $0.createdAt > $1.createdAt }
         case .title:
@@ -339,7 +360,9 @@ extension Array where Element == Anniversary {
     func inCategory(_ category: AnniversaryCategory) -> [Anniversary] {
         self
             .filter { $0.category == category }
-            .sorted { $0.nextDate < $1.nextDate }
+            .map { (item: $0, key: $0.nextDate) }
+            .sorted { $0.key < $1.key }
+            .map(\.item)
     }
 
     func count(in category: AnniversaryCategory) -> Int {
