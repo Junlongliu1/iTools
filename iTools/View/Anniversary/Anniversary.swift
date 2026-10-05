@@ -325,9 +325,9 @@ enum AnniversarySortOrder: String, CaseIterable, Identifiable {
 
     var symbol: String {
         switch self {
-        case .nextDate: return "calendar"
-        case .created:  return "clock"
-        case .title:    return "textformat"
+        case .nextDate: return "calendar.badge.clock"
+        case .created:  return "clock.badge.checkmark"
+        case .title:    return "list.number"
         }
     }
 
