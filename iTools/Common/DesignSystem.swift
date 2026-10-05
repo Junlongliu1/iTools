@@ -16,6 +16,7 @@ extension View {
         self.glassEffect(glass, in: .rect(cornerRadius: DSLayout.cardRadius))
     }
 }
+
 struct SettingsCardHeader: View {
     let icon: String
     let iconColor: Color
@@ -82,5 +83,23 @@ struct GlassRowButtonStyle: ButtonStyle {
                 Color.primary.opacity(configuration.isPressed ? 0.06 : 0)
             )
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+// MARK: - 字节格式化
+
+/// 将字节数格式化为可读字符串
+/// - 例：`0 B` / `512 B` / `1.5 KB` / `3.4 MB` / `1.5 GB`
+enum SizeFormatter {
+    static func string(from bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        formatter.isAdaptive = true
+        return formatter.string(fromByteCount: bytes)
+    }
+
+    static func string(from bytes: Int) -> String {
+        string(from: Int64(bytes))
     }
 }

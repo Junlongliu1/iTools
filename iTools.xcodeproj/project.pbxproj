@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		FA7484EC305FFDD10015E05A /* SPFKMetadata in Frameworks */ = {isa = PBXBuildFile; productRef = FA7484EB305FFDD10015E05A /* SPFKMetadata */; };
 		FA84DB1D305FDEDE00F3DB2C /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FA84DB1C305FDEDE00F3DB2C /* WidgetKit.framework */; };
 		FA84DB1F305FDEDE00F3DB2C /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FA84DB1E305FDEDE00F3DB2C /* SwiftUI.framework */; };
 		FA84DB2E305FDEE000F3DB2C /* CalendarWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FA84DB1A305FDEDE00F3DB2C /* CalendarWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -94,7 +93,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				FA7484EC305FFDD10015E05A /* SPFKMetadata in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -173,7 +171,6 @@
 			);
 			name = iTools;
 			packageProductDependencies = (
-				FA7484EB305FFDD10015E05A /* SPFKMetadata */,
 			);
 			productName = iTools;
 			productReference = FA95F8CA304E57A5008A2501 /* iTools.app */;
@@ -208,7 +205,6 @@
 			mainGroup = FA95F8C1304E57A5008A2501;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				FA7484EA305FFDD10015E05A /* XCRemoteSwiftPackageReference "spfk-metadata" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = FA95F8CB304E57A5008A2501 /* Products */;
@@ -554,25 +550,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		FA7484EA305FFDD10015E05A /* XCRemoteSwiftPackageReference "spfk-metadata" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/ryanfrancesconi/spfk-metadata";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.15.1;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		FA7484EB305FFDD10015E05A /* SPFKMetadata */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = FA7484EA305FFDD10015E05A /* XCRemoteSwiftPackageReference "spfk-metadata" */;
-			productName = SPFKMetadata;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = FA95F8C2304E57A5008A2501 /* Project object */;
 }

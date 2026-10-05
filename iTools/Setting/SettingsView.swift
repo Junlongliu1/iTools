@@ -60,7 +60,7 @@ struct SettingsView: View {
             Button { path.append(SettingsRoute.cache) } label: {
                 SettingsRow(
                     title: "缓存管理",
-                    subtitle: "清理图片、网络与临时文件",
+                    subtitle: "清理网络、日志与临时文件",
                     badge: cacheBadge
                 )
             }
@@ -72,7 +72,7 @@ struct SettingsView: View {
 
     private var cacheBadge: String? {
         guard cacheManager.totalBytes > 0 else { return nil }
-        return LocalFiles.formattedSize(Int64(cacheManager.totalBytes))
+        return SizeFormatter.string(from: cacheManager.totalBytes)
     }
 
     // MARK: - 外观
