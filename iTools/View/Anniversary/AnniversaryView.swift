@@ -58,7 +58,6 @@ struct AnniversaryView: View {
     @State private var path = NavigationPath()
 
     @State private var showCreate = false
-    @State private var showCloudSettings = false
     @State private var selectedCategory: CategorySelection = .all
     @State private var searchText = ""
     @State private var sortOrder: AnniversarySortOrder = .nextDate
@@ -136,14 +135,7 @@ struct AnniversaryView: View {
             .navigationBarTitleDisplayMode(.large)
             .searchable(text: $searchText, prompt: "搜索名称或备注")
             .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        showCloudSettings = true
-                    } label: {
-                        Image(systemName: "externaldrive.badge.icloud")
-                    }
-                    .accessibilityLabel("云盘备份")
-
+                ToolbarItem(placement: .topBarTrailing) {
                     sortMenu
                 }
             }
@@ -152,9 +144,6 @@ struct AnniversaryView: View {
             }
             .sheet(isPresented: $showCreate) {
                 AnniversaryEditor(mode: .create)
-            }
-            .sheet(isPresented: $showCloudSettings) {
-                NavigationStack { CloudBackupView() }
             }
             .overlay(alignment: .bottomTrailing) {
                 GlassEffectContainer(spacing: 16) {

@@ -5,6 +5,7 @@ private enum SettingsRoute: Hashable {
     case logs
     case about
     case cache
+    case cloudBackup
 }
 
 struct SettingsView: View {
@@ -19,6 +20,7 @@ struct SettingsView: View {
                 GlassEffectContainer(spacing: DSLayout.cardSpacing) {
                     LazyVStack(spacing: DSLayout.cardSpacing) {
                         storageCard
+                        backupCard
                         appearanceCard
                         developerCard
                     }
@@ -36,9 +38,10 @@ struct SettingsView: View {
             .navigationTitle("设置")
             .navigationDestination(for: SettingsRoute.self) { route in
                 switch route {
-                case .logs:  LogViewerView()
-                case .about: AboutView()
-                case .cache: CacheManagementView()
+                case .logs:        LogViewerView()
+                case .about:       AboutView()
+                case .cache:       CacheManagementView()
+                case .cloudBackup: CloudBackupView()
                 }
             }
             .task {
@@ -73,6 +76,29 @@ struct SettingsView: View {
     private var cacheBadge: String? {
         guard cacheManager.totalBytes > 0 else { return nil }
         return SizeFormatter.string(from: cacheManager.totalBytes)
+    }
+
+    // MARK: - 备份
+
+    private var backupCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SettingsCardHeader(
+                icon: "externaldrive.fill.badge.icloud",
+                iconColor: .purple,
+                title: "备份"
+            )
+
+            Button { path.append(SettingsRoute.cloudBackup) } label: {
+                SettingsRow(
+                    title: "云盘备份",
+                    subtitle: "将纪念日备份到坚果云",
+                    badge: nil
+                )
+            }
+            .buttonStyle(GlassRowButtonStyle())
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardGlass()
     }
 
     // MARK: - 外观
