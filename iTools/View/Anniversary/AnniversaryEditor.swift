@@ -187,6 +187,7 @@ struct AnniversaryEditor: View {
 
         do {
             try context.save()
+            AnniversaryWidgetSync.sync(context: context) 
         } catch {
             AppLogError("保存纪念日失败 [\(trimmedTitle)]: \(error.localizedDescription)")
             errorMessage = "保存失败：\(error.localizedDescription)"

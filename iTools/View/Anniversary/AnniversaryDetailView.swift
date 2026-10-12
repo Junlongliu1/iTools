@@ -280,6 +280,7 @@ struct AnniversaryDetailView: View {
 
         do {
             try context.save()
+            AnniversaryWidgetSync.sync(context: context)
         } catch {
             context.rollback()
             AppLogError("删除纪念日失败 [\(title)]: \(error.localizedDescription)")

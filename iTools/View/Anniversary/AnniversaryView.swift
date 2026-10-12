@@ -54,6 +54,7 @@ enum CategorySelection: Hashable, Identifiable {
 
 struct AnniversaryView: View {
     @Query(sort: \Anniversary.date) private var all: [Anniversary]
+    @Environment(\.modelContext) private var context
 
     @State private var path = NavigationPath()
 
@@ -155,11 +156,17 @@ struct AnniversaryView: View {
         }
         // 跨天刷新：60 秒轮询，日期变化才触发重渲染
         .task {
+            // 首帧同步一次
+            AnniversaryWidgetSync.sync(context: context)
+
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(60))
                 if Task.isCancelled { return }
                 let t = Calendar.current.startOfDay(for: Date())
-                if t != today { today = t }
+                if t != today {
+                    today = t
+                    AnniversaryWidgetSync.sync(context: context)   // 跨天刷新
+                }
             }
         }
     }
