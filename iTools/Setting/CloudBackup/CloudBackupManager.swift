@@ -79,6 +79,47 @@ final class CloudBackupManager: ObservableObject {
     func performAutoBackup() async throws -> BackupOutcome {
         try await uploadCurrentData(force: false)
     }
+    
+    // MARK: - 前台兜底自动备份
+
+    /// 用户打开 App 或回到前台时调用。
+    /// 距上次成功备份超过一个周期才会真正执行，否则直接返回。
+    /// - Returns: 是否实际尝试执行了备份（无论成功失败）
+    @discardableResult
+    func performForegroundAutoBackupIfNeeded() async -> Bool {
+        guard auth.isLoggedIn else {
+            AppLogInfo("[AutoBackup] 未登录，跳过后台兜底")
+            return false
+        }
+        guard state == .idle else {
+            AppLogInfo("[AutoBackup] 当前非 idle，跳过前台兜底")
+            return false
+        }
+
+        let interval = settings.policy.interval
+        if let last = settings.lastBackupDate {
+            let elapsed = Date().timeIntervalSince(last)
+            guard elapsed >= interval else {
+                let remainHours = Int((interval - elapsed) / 3600)
+                AppLogInfo("[AutoBackup] 距上次备份未满周期，剩余约 \(remainHours) 小时，跳过")
+                return false
+            }
+        }
+
+        do {
+            let outcome = try await performAutoBackup()
+            switch outcome {
+            case .uploaded(let name):
+                AppLogInfo("[AutoBackup] 前台兜底成功 file=\(name)")
+            case .skippedNoChange:
+                AppLogInfo("[AutoBackup] 前台兜底：数据无变化")
+            }
+            return true
+        } catch {
+            AppLogWarn("[AutoBackup] 前台兜底失败: \(error.localizedDescription)")
+            return false
+        }
+    }
 
     // MARK: - 核心上传
 

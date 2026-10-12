@@ -23,8 +23,10 @@ struct iToolsApp: App {
         // 注入 ModelContext 给 CloudBackupManager
         CloudBackupManager.shared.configure(modelContext: container.mainContext)
 
-        // 注册后台备份任务
+        // 注册后台备份任务（每次冷启动注册一次，系统要求）
         BackgroundBackupScheduler.shared.register()
+
+        // 首次或冷启动重排：基于 lastBackupDate 计算，不会推迟原定时间
         BackgroundBackupScheduler.shared.reschedule(
             policy: CloudBackupSettings.shared.policy
         )
@@ -41,6 +43,7 @@ struct iToolsApp: App {
 private struct RootView: View {
     @AppStorage("appColorScheme") private var appColorScheme: AppColorScheme = .system
     @Environment(\.modelContext) private var context
+    @Environment(\.scenePhase) private var scenePhase
     @State private var didBootstrap = false
 
     var body: some View {
@@ -52,9 +55,12 @@ private struct RootView: View {
                 didBootstrap = true
                 await bootstrap()
             }
+            .onChange(of: scenePhase) { _, newPhase in
+                handleScenePhase(newPhase)
+            }
     }
 
-    /// 启动：请求通知权限 + 修复旧数据 UUID + 全量重排提醒
+    /// 启动：请求通知权限 + 修复旧数据 UUID + 全量重排提醒 + 兜底备份
     @MainActor
     private func bootstrap() async {
         _ = await ReminderScheduler.requestAuthorization()
@@ -88,6 +94,30 @@ private struct RootView: View {
         }
 
         await ReminderScheduler.rescheduleAll(items)
+
+        // 前台兜底：若已超过备份周期，立即补一次
+        await CloudBackupManager.shared.performForegroundAutoBackupIfNeeded()
+    }
+
+    // MARK: - 场景切换
+
+    @MainActor
+    private func handleScenePhase(_ phase: ScenePhase) {
+        switch phase {
+        case .active:
+            // 回到前台：检查是否需要补一次备份
+            Task { @MainActor in
+                await CloudBackupManager.shared.performForegroundAutoBackupIfNeeded()
+            }
+        case .background:
+            // 进入后台：刷新调度，保证队列里始终有任务
+            // reschedule 基于 lastBackupDate，不会推迟原定时间
+            BackgroundBackupScheduler.shared.reschedule(
+                policy: CloudBackupSettings.shared.policy
+            )
+        default:
+            break
+        }
     }
 }
 

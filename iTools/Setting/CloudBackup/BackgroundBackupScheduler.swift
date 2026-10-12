@@ -15,12 +15,15 @@ final class BackgroundBackupScheduler {
     /// 需与 Info.plist 中 BGTaskSchedulerPermittedIdentifiers 保持一致
     static let taskIdentifier = "com.iTools.cloudBackup.refresh"
 
+    /// 失败后最短重试间隔（防止 lastBackupDate 未更新时被反复调度）
+    private static let minimumRetryInterval: TimeInterval = 3600  // 1 小时
+
     private init() {}
 
     // MARK: - 注册（App 启动时调用）
 
     func register() {
-        BGTaskScheduler.shared.register(
+        let ok = BGTaskScheduler.shared.register(
             forTaskWithIdentifier: Self.taskIdentifier,
             using: nil
         ) { task in
@@ -30,21 +33,32 @@ final class BackgroundBackupScheduler {
             }
             self.handle(task: refreshTask)
         }
-        AppLogInfo("[BGTask] 已注册 \(Self.taskIdentifier)")
+        AppLogInfo("[BGTask] register id=\(Self.taskIdentifier) ok=\(ok)")
     }
 
     // MARK: - 调度
 
+    /// 按「上次成功备份时间 + interval」计算下次最早执行时间。
+    /// - 未备份过：以当前时间为基准
+    /// - 已备份过：以 lastBackupDate 为基准，冷启动重排不会推迟时间
+    /// - 保底不早于 1 小时后，避免失败后立刻被系统再次唤起
     func reschedule(policy: CloudBackupSettings.BackupPolicy) {
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.taskIdentifier)
 
+        let baseDate = CloudBackupSettings.shared.lastBackupDate ?? Date()
+        let target   = baseDate.addingTimeInterval(policy.interval)
+        let floor    = Date().addingTimeInterval(Self.minimumRetryInterval)
+        let earliest = max(target, floor)
+
         let request = BGAppRefreshTaskRequest(identifier: Self.taskIdentifier)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: policy.interval)
+        request.earliestBeginDate = earliest
 
         do {
             try BGTaskScheduler.shared.submit(request)
-            let hours = Int(policy.interval / 3600)
-            AppLogInfo("[BGTask] 已调度下一次备份 policy=\(policy.displayName) 约 \(hours) 小时后")
+            let fmt = DateFormatter()
+            fmt.dateFormat = "MM-dd HH:mm"
+            let baseDesc = CloudBackupSettings.shared.lastBackupDate == nil ? "首次" : fmt.string(from: baseDate)
+            AppLogInfo("[BGTask] 已调度 policy=\(policy.displayName) base=\(baseDesc) next=\(fmt.string(from: earliest))")
         } catch {
             AppLogError("[BGTask] 调度失败: \(error.localizedDescription)")
         }
@@ -55,9 +69,12 @@ final class BackgroundBackupScheduler {
     private func handle(task: BGAppRefreshTask) {
         AppLogInfo("[BGTask] 开始执行后台备份任务")
 
-        reschedule(policy: CloudBackupSettings.shared.policy)
+        let workTask = Task { @MainActor in
+            defer {
+                // 无论成功失败，都要重新调度，否则 BGTask 不会再有下一次
+                self.reschedule(policy: CloudBackupSettings.shared.policy)
+            }
 
-        let workTask = Task {
             do {
                 let result = try await CloudBackupManager.shared.performAutoBackup()
                 switch result {
