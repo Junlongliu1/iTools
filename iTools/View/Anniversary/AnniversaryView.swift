@@ -129,7 +129,7 @@ struct AnniversaryView: View {
             .scrollContentBackground(.hidden)
             .background(Color(.systemGroupedBackground))
             .scrollEdgeEffectStyle(.soft, for: .top)
-            .scrollEdgeEffectStyle(.hard, for: .bottom)
+            .scrollEdgeEffectStyle(.none, for: .bottom)
             .contentMargins(.top, 4, for: .scrollContent)
             .contentMargins(.bottom, 120, for: .scrollContent)
             .navigationTitle("纪念日")
